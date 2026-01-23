@@ -13,6 +13,7 @@ target/
 export/
 *.jar
 !lib/*.jar
+!docs/updatesite/*.jar
 
 # OS files
 .DS_Store

@@ -1,0 +1,32 @@
+name: 🐛 Bug Report
+description: Report a bug
+labels: ["bug", "needs-triage"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      placeholder: "Detailed steps..."
+    validations:
+      required: true
+  - type: dropdown
+    id: eclipse-version
+    attributes:
+      label: Eclipse Version
+      options: ["2023-12", "2024-03", "2024-06", "2024-09", "2024-12", "Other"]
+      multiple: false
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs
+      render: shell
+  - type: checkboxes
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - label: "Ollama not running"
+        - label: "Model not pulled"
+        - label: "Plugin not loaded"

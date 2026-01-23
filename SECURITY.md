@@ -11,7 +11,7 @@
 
 **Do NOT open a public issue for security vulnerabilities.**
 
-Instead, please email: [your-email@example.com]
+Instead, please Post your comment.
 
 Include:
 - Description of the vulnerability

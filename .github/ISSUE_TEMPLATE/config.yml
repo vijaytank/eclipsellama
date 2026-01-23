@@ -1,0 +1,31 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/vijaytank/eclipsellama/discussions/new?category=q-a
+    about: Report security issues privately via Discussion (per SECURITY.md)
+  - name: General Questions
+    url: https://github.com/vijaytank/eclipsellama/discussions/categories/q-a
+    about: Ask usage, setup, or feature questions in Discussions
+  - name: Feature Requests
+    url: https://github.com/vijaytank/eclipsellama/discussions/categories/ideas
+    about: Share ideas for new features
+
+issue_templates:
+  - bug-report:
+      name: 🐛 Bug Report
+      description: File a bug encountered while using EclipseLlama
+      labels:
+        - bug
+        - needs-triage
+  - feature-request:
+      name: 🚀 Feature Request
+      description: Suggest a new feature or improvement
+      labels:
+        - enhancement
+        - needs-triage
+  - documentation:
+      name: 📚 Documentation Issue
+      description: Report issues or improvements with docs/wiki
+      labels:
+        - documentation
+        - good first issue

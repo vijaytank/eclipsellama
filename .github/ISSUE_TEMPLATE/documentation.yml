@@ -1,0 +1,47 @@
+name: 🚀 Feature Request
+description: Suggest a new feature or enhancement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: "What feature would you like? Why is it important?"
+      placeholder: "e.g. Inline code completion like Copilot..."
+    validations:
+      required: true
+  
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: "Describe the problem this solves or scenario where it's useful"
+      placeholder: "e.g. When writing Java, I want autocomplete suggestions..."
+    validations:
+      required: true
+  
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Proposed Implementation (optional)
+      description: "Any ideas on how to implement?"
+      placeholder: "e.g. Add new Eclipse command handler..."
+  
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "Nice to have"
+        - "Important"
+        - "Must have"
+      default: 0
+  
+  - type: checkboxes
+    id: related
+    attributes:
+      label: Related
+      options:
+        - label: "Related to Ollama model support"
+        - label: "Related to Eclipse integration"
+        - label: "UI/UX improvement"

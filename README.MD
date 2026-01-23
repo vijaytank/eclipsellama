@@ -1,6 +1,8 @@
 # EclipseLlama 🦙
 
-**A privacy-first AI coding assistant for Eclipse, powered by local Ollama models.**
+Topics: eclipse-plugin, ollama, local-llm, ai-coding-assistant, java, eclipse-ide
+
+**A privacy-first AI coding assistant for Eclipse IDE, powered by local Ollama models like CodeLlama and DeepSeek Coder. Features: AI chat, code explanation, bug fixes, test generation, Javadoc. 100% local, no cloud.**
 
 ---
 
@@ -43,6 +45,14 @@ ollama pull qwen2.5-coder
 2. Copy to Eclipse's `dropins/` folder
 3. Restart Eclipse
 4. Complete the setup wizard
+
+### Install from Update Site
+
+1. In Eclipse, go to **Help → Install New Software...**
+2. Click **Add...**
+3. Enter Name: `EclipseLlama`
+4. Enter Location: `https://vijaytank.github.io/eclipsellama/updatesite/`
+5. Click **Add**, select **EclipseLlama**, and follow the wizard.
 
 ---
 

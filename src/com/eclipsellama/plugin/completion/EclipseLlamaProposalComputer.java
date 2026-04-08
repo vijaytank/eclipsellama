@@ -14,6 +14,7 @@ import org.eclipse.jface.text.contentassist.CompletionProposal;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
 import org.eclipse.jface.text.contentassist.IContextInformation;
 
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
@@ -55,7 +56,7 @@ public class EclipseLlamaProposalComputer implements IJavaCompletionProposalComp
             String model = EclipseLlamaPreferences.getModel();
 
             // Async completion with timeout
-            CompletableFuture<String> future = OllamaClient.generateAsync(prompt, model);
+            CompletableFuture<String> future = ClientProvider.getClient().generateAsync(prompt, model);
 
             String suggestion = future.get(COMPLETION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 

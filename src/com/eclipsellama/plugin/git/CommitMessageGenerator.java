@@ -1,5 +1,6 @@
 package com.eclipsellama.plugin.git;
 
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
@@ -35,7 +36,7 @@ public class CommitMessageGenerator {
 
         try {
             lastModel = EclipseLlamaPreferences.getModel();
-            String result = OllamaClient.generate(prompt, lastModel);
+            String result = ClientProvider.getClient().generate(prompt, lastModel);
             lastRawResponse = result;
 
             // Clean up the response

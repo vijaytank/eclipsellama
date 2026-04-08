@@ -2,7 +2,7 @@
 
 Topics: eclipse-plugin, ollama, local-llm, ai-coding-assistant, java, eclipse-ide
 
-**A privacy-first AI coding assistant for Eclipse IDE, powered by local Ollama models like CodeLlama and DeepSeek Coder. Features: AI chat, code explanation, bug fixes, test generation, Javadoc. 100% local, no cloud.**
+**A privacy-first AI coding assistant for Eclipse IDE, powered by local Ollama or OpenAI models like CodeLlama and DeepSeek Coder. Features: AI chat, code explanation, bug fixes, test generation, Javadoc. 100% local, no cloud.**
 
 ---
 
@@ -26,7 +26,8 @@ Topics: eclipse-plugin, ollama, local-llm, ai-coding-assistant, java, eclipse-id
 
 1. **Eclipse IDE** 2023-12 or newer
 2. **Java 21** or compatible JDK
-3. **Ollama** installed and running ([Download](https://ollama.com))
+3. **Ollama** installed and running ([Download](https://ollama.com)) or 
+   **Open AI** compatible endpoint (like llama-server) installed and running
 
 ### Install a Code Model
 

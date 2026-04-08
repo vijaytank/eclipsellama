@@ -24,6 +24,7 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
 import com.eclipsellama.plugin.core.ChatMessage;
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
@@ -223,10 +224,10 @@ public class ChatView extends ViewPart {
         modelCombo.removeAll();
 
         new Thread(() -> {
-            String[] models = OllamaClient.getAvailableModels();
+            String[] models = ClientProvider.getClient().getAvailableModels();
             Display.getDefault().asyncExec(() -> {
                 if (models.length == 0) {
-                    statusLabel.setText("⚠️ No models found. Is Ollama running?");
+                    statusLabel.setText("⚠️ No models found. Is endpoint running?");
                     for (String model : EclipseLlamaPreferences.getRecommendedCodeModels()) {
                         modelCombo.add(model);
                     }
@@ -249,7 +250,7 @@ public class ChatView extends ViewPart {
     }
 
     private void sendMessage() {
-        String input = inputField.getText().trim();
+        String input = inputField.getText().trim().replace("\r", "");
         if (input.isEmpty() || isStreaming) {
             return;
         }
@@ -274,7 +275,7 @@ public class ChatView extends ViewPart {
         // Create assistant bubble for streaming
         currentAssistantBubble = addMessageBubble("🦙 EclipseLlama", "", false);
 
-        OllamaClient.streamChat(
+        ClientProvider.getClient().streamChat(
                 conversation,
                 model,
                 this::onChunk,
@@ -310,7 +311,7 @@ public class ChatView extends ViewPart {
 
         // Message content
         StyledText messageText = new StyledText(bubble, SWT.WRAP | SWT.READ_ONLY);
-        messageText.setText(content);
+        //messageText.setText(content);
         messageText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         messageText.setBackground(bgColor);
         messageText.setWordWrap(true);
@@ -337,14 +338,21 @@ public class ChatView extends ViewPart {
     private void applyMarkdownStyles(StyledText textWidget, String content) {
         List<MarkdownRenderer.StyledSegment> segments = markdownRenderer.parse(content);
 
-        int offset = 0;
-        for (MarkdownRenderer.StyledSegment segment : segments) {
-            StyleRange range = markdownRenderer.createStyleRange(segment, offset);
-            if (range != null) {
-                textWidget.setStyleRange(range);
-            }
-            offset += segment.text.length();
+        StringBuilder visualText = new StringBuilder();
+        List<StyleRange> ranges = new ArrayList<>();
+
+        for (MarkdownRenderer.StyledSegment seg : segments) {
+            int start = visualText.length();
+            visualText.append(seg.text); // Hier kommt NUR der bereinigte Inhalt rein
+            
+            StyleRange sr = markdownRenderer.createStyleRange(seg, start);
+            if (sr != null) ranges.add(sr);
         }
+
+        // Damit Windows nicht eigenmächtig \r\n einbaut, setzen wir den Text 
+        // und die Ranges in einem Rutsch.
+        textWidget.setText(visualText.toString());
+        textWidget.setStyleRanges(ranges.toArray(new StyleRange[0]));
     }
 
     /**

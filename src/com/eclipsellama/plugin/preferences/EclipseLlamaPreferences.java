@@ -22,6 +22,7 @@ public final class EclipseLlamaPreferences {
     private static final String KEY_MODEL = "ollama.model";
     private static final String KEY_SETUP_COMPLETE = "setup.complete";
     private static final String KEY_COMMIT_PROMPT = "commit.prompt";
+    private static final String KEY_API_KEY = "api.key";
 
     // Defaults
     private static final String DEFAULT_ENDPOINT = "http://localhost:11434";
@@ -31,6 +32,11 @@ public final class EclipseLlamaPreferences {
 
     private static Properties properties;
     private static boolean loaded = false;
+    
+    public enum BackendType {
+    	OLLAMA,
+    	OPENAI
+    }
 
     private EclipseLlamaPreferences() {
         // Utility class
@@ -65,6 +71,7 @@ public final class EclipseLlamaPreferences {
         properties.setProperty(KEY_MODEL, DEFAULT_MODEL);
         properties.setProperty(KEY_SETUP_COMPLETE, "false");
         properties.setProperty(KEY_COMMIT_PROMPT, DEFAULT_COMMIT_PROMPT);
+        properties.setProperty(KEY_API_KEY, "");
 
         // Load from file if exists
         Path configFile = getConfigFile();
@@ -101,17 +108,17 @@ public final class EclipseLlamaPreferences {
     }
 
     /**
-     * Get Ollama endpoint URL.
+     * Get endpoint URL.
      */
-    public static String getOllamaEndpoint() {
+    public static String getEndpoint() {
         load();
         return properties.getProperty(KEY_ENDPOINT, DEFAULT_ENDPOINT);
     }
 
     /**
-     * Set Ollama endpoint URL.
+     * Set endpoint URL.
      */
-    public static void setOllamaEndpoint(String endpoint) {
+    public static void setEndpoint(String endpoint) {
         load();
         properties.setProperty(KEY_ENDPOINT,
                 (endpoint == null || endpoint.isBlank()) ? DEFAULT_ENDPOINT : endpoint.trim());
@@ -132,6 +139,23 @@ public final class EclipseLlamaPreferences {
         load();
         properties.setProperty(KEY_MODEL,
                 (model == null || model.isBlank()) ? DEFAULT_MODEL : model.trim());
+    }
+    
+    /**
+     * Get api key.
+     */
+    public static String getApiKey() {
+        load();
+        return properties.getProperty(KEY_API_KEY, "");
+    }
+
+    /**
+     * Set api key.
+     */
+    public static void setApiKey(String key) {
+        load();
+        properties.setProperty(KEY_API_KEY,
+                (key == null || key.isBlank()) ? "" : key.trim());
     }
 
     /**
@@ -187,5 +211,12 @@ public final class EclipseLlamaPreferences {
      */
     public static boolean configExists() {
         return Files.exists(getConfigFile());
+    }
+    
+    /**
+     * Get backend type
+     */
+    public static BackendType getBackendType() {
+    	return (getEndpoint()!=null && getEndpoint().contains("v1"))?BackendType.OPENAI:BackendType.OLLAMA;
     }
 }

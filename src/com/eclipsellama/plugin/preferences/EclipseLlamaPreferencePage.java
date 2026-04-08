@@ -15,14 +15,18 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
 
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 
 /**
  * Preferences page for EclipseLlama settings.
  */
 public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkbenchPreferencePage {
+	public EclipseLlamaPreferencePage() {
+	}
 
     private Text endpointText;
+    private Text apiKeyText;
     private Combo modelCombo;
     private Text commitPromptText;
     private Label statusLabel;
@@ -47,8 +51,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
     private void createConnectionGroup(Composite parent) {
         Group group = new Group(parent, SWT.NONE);
-        group.setText("Ollama Connection");
-        group.setLayout(new GridLayout(3, false));
+        group.setText("LLM Connection");
+        group.setLayout(new GridLayout(2, false));
         group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
         Label endpointLabel = new Label(group, SWT.NONE);
@@ -56,6 +60,13 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
         endpointText = new Text(group, SWT.BORDER);
         endpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        
+        Label apiKeyLabel = new Label(group, SWT.NONE);
+        apiKeyLabel.setText("Api key:");
+
+        apiKeyText = new Text(group, SWT.BORDER);
+        apiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
 
         Button testBtn = new Button(group, SWT.PUSH);
         testBtn.setText("Test");
@@ -64,6 +75,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
         new Label(group, SWT.NONE); // Spacer
         statusLabel = new Label(group, SWT.NONE);
         statusLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+        new Label(group, SWT.NONE);
+        new Label(group, SWT.NONE);
     }
 
     private void createModelGroup(Composite parent) {
@@ -103,7 +116,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
     }
 
     private void loadPreferences() {
-        endpointText.setText(EclipseLlamaPreferences.getOllamaEndpoint());
+        endpointText.setText(EclipseLlamaPreferences.getEndpoint());
+        apiKeyText.setText(EclipseLlamaPreferences.getApiKey());
         commitPromptText.setText(EclipseLlamaPreferences.getCommitPrompt());
 
         // Load models
@@ -121,24 +135,26 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
     }
 
     private void testConnection() {
+		savePreferences();
         statusLabel.setText("Testing...");
 
         new Thread(() -> {
-            boolean ok = OllamaClient.isServerReachable();
+            boolean ok = ClientProvider.getClient().isServerReachable();
             Display.getDefault().asyncExec(() -> {
                 if (ok) {
                     statusLabel.setText("✅ Connected successfully");
                     refreshModels();
                 } else {
-                    statusLabel.setText("❌ Cannot connect to Ollama");
+                    statusLabel.setText("❌ Cannot connect to endpoint");
                 }
             });
         }).start();
     }
 
     private void refreshModels() {
+		savePreferences();
         new Thread(() -> {
-            String[] models = OllamaClient.getAvailableModels();
+            String[] models = ClientProvider.getClient().getAvailableModels();
             Display.getDefault().asyncExec(() -> {
                 if (models.length > 0) {
                     String current = modelCombo.getText();
@@ -170,7 +186,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
     }
 
     private void savePreferences() {
-        EclipseLlamaPreferences.setOllamaEndpoint(endpointText.getText());
+        EclipseLlamaPreferences.setEndpoint(endpointText.getText());
+        EclipseLlamaPreferences.setApiKey(apiKeyText.getText());
         EclipseLlamaPreferences.setModel(modelCombo.getText());
         EclipseLlamaPreferences.setCommitPrompt(commitPromptText.getText());
         EclipseLlamaPreferences.save();

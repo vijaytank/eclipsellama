@@ -17,12 +17,12 @@ import org.json.JSONArray;
 
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
-public class OllamaClient implements LLMClient {
+public class OpenAIClient implements LLMClient {
 
-    private static final int CONNECT_TIMEOUT = 60000;
+    private static final int CONNECT_TIMEOUT = 10000;
     private static final int READ_TIMEOUT = 120000;
 
-    public OllamaClient() {
+    public OpenAIClient() {
         // Constructor
     }
 
@@ -30,12 +30,17 @@ public class OllamaClient implements LLMClient {
         return EclipseLlamaPreferences.getEndpoint();
     }
 
+    private String getApiKey() {
+        return EclipseLlamaPreferences.getApiKey();
+    }
+
     @Override
     public boolean isServerReachable() {
         try {
-            URL url = new URL(getEndpoint() + "/api/tags");
+            URL url = new URL(getEndpoint() + "/models");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + getApiKey());
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             try {
@@ -52,9 +57,10 @@ public class OllamaClient implements LLMClient {
     @Override
     public String[] getAvailableModels() {
         try {
-            URL url = new URL(getEndpoint() + "/api/tags");
+            URL url = new URL(getEndpoint() + "/models");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + getApiKey());
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
 
@@ -64,7 +70,7 @@ public class OllamaClient implements LLMClient {
                     return new String[0];
                 }
                 String response = readResponse(conn.getInputStream());
-                return OllamaJsonHelper.parseModelList(response);
+                return OpenAIJsonHelper.parseOpenAIModelList(response);
             } finally {
                 conn.disconnect();
             }
@@ -81,9 +87,11 @@ public class OllamaClient implements LLMClient {
     @Override
     public String chat(String prompt, String model, float temperature, int maxTokens) {
         try {
-            String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
-            String response = sendPost(getEndpoint() + "/api/generate", payload);
-            return OllamaJsonHelper.parseGenerateResponse(response);
+            JSONArray messages = new JSONArray();
+            messages.put(OpenAIJsonHelper.buildChatMessage("user", prompt));
+            String payload = OpenAIJsonHelper.buildOpenAIChatRequest(model, messages, false, temperature, maxTokens);
+            String response = sendPost(getEndpoint() + "/chat/completions", payload);
+            return OpenAIJsonHelper.parseOpenAIChatResponse(response);
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }
@@ -105,14 +113,15 @@ public class OllamaClient implements LLMClient {
             try {
                 JSONArray jsonMessages = new JSONArray();
                 for (ChatMessage msg : messages) {
-                    jsonMessages.put(OllamaJsonHelper.buildChatMessage(msg.getRole(), msg.getContent()));
+                    jsonMessages.put(OpenAIJsonHelper.buildChatMessage(msg.getRole(), msg.getContent()));
                 }
 
-                String payload = OllamaJsonHelper.buildChatRequest(model, jsonMessages, true);
+                String payload = OpenAIJsonHelper.buildOpenAIChatRequest(model, jsonMessages, true, temperature, maxTokens);
 
-                URL url = new URL(getEndpoint() + "/api/chat");
+                URL url = new URL(getEndpoint() + "/chat/completions");
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
+                conn.setRequestProperty("Authorization", "Bearer " + getApiKey());
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Accept", "application/json");
                 conn.setConnectTimeout(CONNECT_TIMEOUT);
@@ -132,11 +141,13 @@ public class OllamaClient implements LLMClient {
                         new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        String chunk = OllamaJsonHelper.parseChatChunk(line);
-                        if (!chunk.isEmpty()) {
+                        String chunk = OpenAIJsonHelper.parseOpenAIChatChunk(line);
+                        if (chunk != null) {
                             fullResponse.append(chunk);
                             final String c = chunk;
                             Display.getDefault().asyncExec(() -> onChunk.accept(c));
+                        } else if (OpenAIJsonHelper.isOpenAIDone(line)) {
+                            break;
                         }
                     }
                 }
@@ -155,16 +166,11 @@ public class OllamaClient implements LLMClient {
         });
     }
 
-   
+  
     @Override
     public String generate(String prompt, String model) {
-        try {
-            String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
-            String response = sendPost(getEndpoint() + "/api/generate", payload);
-            return OllamaJsonHelper.parseGenerateResponse(response);
-        } catch (Exception e) {
-            return "Error: " + e.getMessage();
-        }
+        // Map generate to chat with single user message for OpenAI
+        return chat(prompt, model, 0.7f, 2048);
     }
 
     @Override
@@ -178,6 +184,7 @@ public class OllamaClient implements LLMClient {
         URL url = new URL(endpoint);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
+        conn.setRequestProperty("Authorization", "Bearer " + getApiKey());
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(CONNECT_TIMEOUT);

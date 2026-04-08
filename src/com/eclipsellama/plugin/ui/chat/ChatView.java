@@ -170,9 +170,11 @@ public class ChatView extends ViewPart {
         inputField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (e.keyCode == SWT.CR && (e.stateMask & SWT.SHIFT) == 0) {
-                    e.doit = false;
-                    sendMessage();
+                if (e.keyCode == SWT.CR || e.keyCode == SWT.KEYPAD_CR) {
+                    if ((e.stateMask & SWT.SHIFT) == 0) {
+                        e.doit = false;
+                        sendMessage();
+                    }
                 }
             }
         });
@@ -250,7 +252,12 @@ public class ChatView extends ViewPart {
 
     private void sendMessage() {
         String input = inputField.getText().trim();
-        if (input.isEmpty() || isStreaming) {
+        if (input.isEmpty()) {
+            return;
+        }
+        
+        if (isStreaming) {
+            statusLabel.setText("⚠️ Already thinking... please wait or stop.");
             return;
         }
 
@@ -262,13 +269,17 @@ public class ChatView extends ViewPart {
         inputField.setText("");
         charCountLabel.setText("0 chars");
 
-        startStreaming();
-
         String model = modelCombo.getText();
         if (model.isEmpty()) {
             model = EclipseLlamaPreferences.getModel();
         }
+        
+        if (model.isEmpty()) {
+            addMessageBubble("🦙 EclipseLlama", "⚠️ No model selected. Please select a model in the toolbar or settings.", false);
+            return;
+        }
 
+        startStreaming();
         currentResponse = new StringBuilder();
 
         // Create assistant bubble for streaming
@@ -492,6 +503,13 @@ public class ChatView extends ViewPart {
         };
         inputField.setText(prompt);
         inputField.setFocus();
+        
+        // Auto-send after a small delay to ensure UI is ready
+        Display.getDefault().asyncExec(() -> {
+            if (!inputField.isDisposed()) {
+                sendMessage();
+            }
+        });
     }
 
     @Override

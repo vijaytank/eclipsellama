@@ -13,7 +13,7 @@ Write-Host "========================================"
 Write-Host ""
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$PluginJar = "com.eclipsellama.plugin_2.0.0.jar"
+$PluginJar = "com.eclipsellama.plugin_2.0.1.jar"
 
 # Step 1: Check if Eclipse export directory exists
 Write-Host "--- Step 1: Preparing Export ---"

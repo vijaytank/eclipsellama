@@ -3,6 +3,7 @@ package com.eclipsellama.plugin.setup;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IStartup;
 
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
@@ -23,9 +24,9 @@ public class SetupLauncher implements IStartup {
         // Skip if already configured
         if (EclipseLlamaPreferences.isSetupComplete()) {
             // Just verify connection silently
-            if (!OllamaClient.isServerReachable()) {
-                System.out.println("EclipseLlama: Warning - Ollama server not reachable at "
-                        + EclipseLlamaPreferences.getOllamaEndpoint());
+            if (!ClientProvider.getClient().isServerReachable()) {
+                System.out.println("EclipseLlama: Warning - endpoint not reachable at "
+                        + EclipseLlamaPreferences.getEndpoint());
             }
             return;
         }

@@ -14,6 +14,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
 
+import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.core.OllamaClient;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
@@ -23,6 +24,7 @@ import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 public class SetupWizardDialog extends TitleAreaDialog {
 
     private Text endpointText;
+    private Text apiKeyText;
     private Combo modelCombo;
     private Label statusLabel;
 
@@ -54,11 +56,19 @@ public class SetupWizardDialog extends TitleAreaDialog {
 
         // Endpoint
         Label endpointLabel = new Label(container, SWT.NONE);
-        endpointLabel.setText("Ollama URL:");
+        endpointLabel.setText("Endpoint URL:");
 
         endpointText = new Text(container, SWT.BORDER);
         endpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        endpointText.setText(EclipseLlamaPreferences.getOllamaEndpoint());
+        endpointText.setText(EclipseLlamaPreferences.getEndpoint());
+
+        // Api key
+        Label apiKeyLabel = new Label(container, SWT.NONE);
+        apiKeyLabel.setText("Api key:");
+
+        apiKeyText = new Text(container, SWT.BORDER);
+        apiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        apiKeyText.setText(EclipseLlamaPreferences.getApiKey());
 
         // Test connection button
         new Label(container, SWT.NONE); // Spacer
@@ -92,11 +102,15 @@ public class SetupWizardDialog extends TitleAreaDialog {
         infoData.widthHint = 400;
         infoLabel.setLayoutData(infoData);
         infoLabel.setText(
-                "\n📋 Quick Start:\n" +
+                "\n📋 Quick Start(Ollama):\n" +
                         "1. Install Ollama from ollama.com\n" +
                         "2. Run: ollama pull codellama\n" +
                         "3. Make sure Ollama is running\n" +
                         "4. Click 'Test Connection' above\n\n" +
+                 "\n📋 Quick Start(Open AI compabitble):\n" +
+                        "1. Make sure your Open AI compatible endpoint (f.e. llama-server) is running \n" +
+                        "2. Make sure test endpoint Url ends with 'v1' \n" +
+                        "3. Click 'Test Connection' above\n\n" +
                         "💡 Keyboard shortcut: Ctrl+Shift+L opens chat");
 
         // Try to load models
@@ -107,13 +121,15 @@ public class SetupWizardDialog extends TitleAreaDialog {
 
     private void testConnection() {
         String endpoint = endpointText.getText().trim();
-        EclipseLlamaPreferences.setOllamaEndpoint(endpoint);
+        EclipseLlamaPreferences.setEndpoint(endpoint);
+        String apiKey = apiKeyText.getText().trim();
+        EclipseLlamaPreferences.setApiKey(apiKey);
 
         statusLabel.setText("Testing connection...");
 
         new Thread(() -> {
-            boolean reachable = OllamaClient.isServerReachable();
-            String[] models = reachable ? OllamaClient.getAvailableModels() : new String[0];
+            boolean reachable = ClientProvider.getClient().isServerReachable();
+            String[] models = reachable ? ClientProvider.getClient().getAvailableModels() : new String[0];
 
             Display.getDefault().asyncExec(() -> {
                 if (reachable) {
@@ -137,7 +153,7 @@ public class SetupWizardDialog extends TitleAreaDialog {
                         }
                     }
                 } else {
-                    statusLabel.setText("❌ Cannot connect. Is Ollama running?");
+                    statusLabel.setText("❌ Cannot connect. Is endpoint running?");
                 }
             });
         }).start();
@@ -152,7 +168,8 @@ public class SetupWizardDialog extends TitleAreaDialog {
     @Override
     protected void okPressed() {
         // Save settings
-        EclipseLlamaPreferences.setOllamaEndpoint(endpointText.getText().trim());
+        EclipseLlamaPreferences.setEndpoint(endpointText.getText().trim());
+        EclipseLlamaPreferences.setApiKey(apiKeyText.getText().trim());
 
         String selectedModel = modelCombo.getText();
         if (!selectedModel.isEmpty()) {

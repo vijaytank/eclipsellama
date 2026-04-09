@@ -2,7 +2,7 @@
 
 Topics: eclipse-plugin, ollama, local-llm, ai-coding-assistant, java, eclipse-ide
 
-**A privacy-first AI coding assistant for Eclipse IDE, powered by local Ollama models like CodeLlama and DeepSeek Coder. Features: AI chat, code explanation, bug fixes, test generation, Javadoc. 100% local, no cloud.**
+**A privacy-first AI coding assistant for Eclipse IDE, powered by local Ollama or OpenAI models like CodeLlama and DeepSeek Coder. Features: AI chat, code explanation, bug fixes, test generation, Javadoc. 100% local, no cloud.**
 
 ---
 
@@ -24,9 +24,11 @@ Topics: eclipse-plugin, ollama, local-llm, ai-coding-assistant, java, eclipse-id
 
 ### Prerequisites
 
-1. **Eclipse IDE** 2023-12 or newer
-2. **Java 21** or compatible JDK
-3. **Ollama** installed and running ([Download](https://ollama.com))
+1. **OS**: Windows 10/11, macOS, or Linux
+2. **Eclipse IDE** 2023-12 or newer
+3. **Java 21** or compatible JDK
+4. **Ollama** installed and running ([Download](https://ollama.com)) or 
+   **Open AI** compatible endpoint (like llama-server)
 
 ### Install a Code Model
 
@@ -111,6 +113,13 @@ ollama.model=codellama
 
 ---
 
+## 🛠️ Troubleshooting
+
+### Connection Timeouts
+If you are using a large model on slower hardware, you might encounter connection timeouts. EclipseLlama now has an increased 60-second timeout to accommodate slower local LLM responses. If issues persist, ensure your Ollama or OpenAI endpoint is reachable.
+
+---
+
 ## 🔒 Privacy
 
 EclipseLlama runs **entirely on your machine**:
@@ -118,8 +127,6 @@ EclipseLlama runs **entirely on your machine**:
 - ✅ No data sent to cloud
 - ✅ Works offline
 - ✅ Your code stays private
-
----
 
 ## 🤝 Contributing
 

@@ -5,17 +5,16 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Centralized JSON utilities for EclipseLlama.
- * Uses org.json library for reliable parsing.
+ * JSON-Hilfsklasse für Ollama API.
  */
-public final class JsonHelper {
+public final class OllamaJsonHelper {
 
-    private JsonHelper() {
+    private OllamaJsonHelper() {
         // Utility class
     }
 
     /**
-     * Escape a string for safe JSON inclusion.
+     * Escapet einen String für die sichere JSON-Einbindung.
      */
     public static String escape(String input) {
         if (input == null) {
@@ -30,7 +29,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Parse the "response" field from Ollama /api/generate response.
+     * Parse die "response" Feld aus Ollama /api/generate Antwort.
      */
     public static String parseGenerateResponse(String json) {
         try {
@@ -42,7 +41,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Parse the "content" field from Ollama /api/chat streaming response.
+     * Parse das "content" Feld aus Ollama /api/chat Streaming Antwort.
      */
     public static String parseChatChunk(String json) {
         try {
@@ -58,7 +57,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Check if the streaming response indicates completion.
+     * Prüft, ob das Streaming bei Ollama abgeschlossen ist.
      */
     public static boolean isDone(String json) {
         try {
@@ -70,7 +69,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Parse model names from /api/tags response.
+     * Parse Modellnamen aus Ollama /api/tags Antwort.
      */
     public static String[] parseModelList(String json) {
         try {
@@ -91,7 +90,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Build a chat message JSON object.
+     * Baut ein Chat-Message JSON Objekt.
      */
     public static JSONObject buildChatMessage(String role, String content) {
         JSONObject msg = new JSONObject();
@@ -101,7 +100,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Build the full chat request payload.
+     * Baut ein Chat-Request Payload für Ollama.
      */
     public static String buildChatRequest(String model, JSONArray messages, boolean stream) {
         JSONObject request = new JSONObject();
@@ -112,7 +111,7 @@ public final class JsonHelper {
     }
 
     /**
-     * Build a generate request payload.
+     * Baut ein Generate-Request Payload für Ollama.
      */
     public static String buildGenerateRequest(String model, String prompt, boolean stream) {
         JSONObject request = new JSONObject();

@@ -15,198 +15,233 @@ import java.util.function.Consumer;
 import org.eclipse.swt.widgets.Display;
 import org.json.JSONArray;
 
+import com.eclipsellama.plugin.api.LlmException;
+import com.eclipsellama.plugin.api.RetryPolicy;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
 public class OllamaClient implements LLMClient {
 
-    private static final int CONNECT_TIMEOUT = 60000;
-    private static final int READ_TIMEOUT = 120000;
+	private static final long INITIAL_BACKOFF_MS = 500;
 
-    public OllamaClient() {
-        // Constructor
-    }
+	public OllamaClient() {
+		// Constructor
+	}
 
-    private String getEndpoint() {
-        return EclipseLlamaPreferences.getEndpoint();
-    }
+	private String getEndpoint() {
+		return EclipseLlamaPreferences.getEndpoint();
+	}
 
-    @Override
-    public boolean isServerReachable() {
-        try {
-            URL url = new URL(getEndpoint() + "/api/tags");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(3000);
-            conn.setReadTimeout(3000);
-            try {
-                conn.connect();
-                return conn.getResponseCode() == 200;
-            } finally {
-                conn.disconnect();
-            }
-        } catch (Exception e) {
-            return false;
-        }
-    }
+	private int getConnectTimeoutMs() {
+		return EclipseLlamaPreferences.getTimeoutSeconds() * 1000;
+	}
 
-    @Override
-    public String[] getAvailableModels() {
-        try {
-            URL url = new URL(getEndpoint() + "/api/tags");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(CONNECT_TIMEOUT);
-            conn.setReadTimeout(READ_TIMEOUT);
+	private int getReadTimeoutMs() {
+		return EclipseLlamaPreferences.getTimeoutSeconds() * 1000;
+	}
 
-            try {
-                conn.connect();
-                if (conn.getResponseCode() != 200) {
-                    return new String[0];
-                }
-                String response = readResponse(conn.getInputStream());
-                return OllamaJsonHelper.parseModelList(response);
-            } finally {
-                conn.disconnect();
-            }
-        } catch (Exception e) {
-            return new String[0];
-        }
-    }
+	private RetryPolicy retryPolicy() {
+		return new RetryPolicy(EclipseLlamaPreferences.getRetryAttempts(), INITIAL_BACKOFF_MS);
+	}
 
-    @Override
-    public String chat(String prompt, String model) {
-        return chat(prompt, model, 0.7f, 2048);
-    }
+	@Override
+	public boolean isServerReachable() {
+		try {
+			URL url = java.net.URI.create(getEndpoint() + "/api/tags").toURL();
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+			conn.setRequestMethod("GET");
+			conn.setConnectTimeout(getConnectTimeoutMs());
+			conn.setReadTimeout(getReadTimeoutMs());
+			try {
+				conn.connect();
+				return conn.getResponseCode() == 200;
+			} finally {
+				conn.disconnect();
+			}
+		} catch (Exception e) {
+			return false;
+		}
+	}
 
-    @Override
-    public String chat(String prompt, String model, float temperature, int maxTokens) {
-        try {
-            String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
-            String response = sendPost(getEndpoint() + "/api/generate", payload);
-            return OllamaJsonHelper.parseGenerateResponse(response);
-        } catch (Exception e) {
-            return "Error: " + e.getMessage();
-        }
-    }
+	@Override
+	public String[] getAvailableModels() {
+		try {
+			return retryPolicy().execute(attempt -> {
+				try {
+					return doGetModels();
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			});
+		} catch (Exception e) {
+			return new String[0];
+		}
+	}
 
-    @Override
-    public void streamChat(List<ChatMessage> messages, String model,
-                           Consumer<String> onChunk, Consumer<String> onComplete, Consumer<String> onError) {
-        streamChat(messages, model, 0.7f, 2048, onChunk, onComplete, onError);
-    }
+	@Override
+	public String chat(String prompt, String model) {
+		return chat(prompt, model, 0.7f, 2048);
+	}
 
-    @Override
-    public void streamChat(List<ChatMessage> messages, String model, float temperature, int maxTokens,
-                           Consumer<String> onChunk, Consumer<String> onComplete, Consumer<String> onError) {
-        CompletableFuture.runAsync(() -> {
-            StringBuilder fullResponse = new StringBuilder();
-            HttpURLConnection conn = null;
+	@Override
+	public String chat(String prompt, String model, float temperature, int maxTokens) {
+		try {
+			String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
+			String response = sendPost(getEndpoint() + "/api/generate", payload);
+			return OllamaJsonHelper.parseGenerateResponse(response);
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
 
-            try {
-                JSONArray jsonMessages = new JSONArray();
-                for (ChatMessage msg : messages) {
-                    jsonMessages.put(OllamaJsonHelper.buildChatMessage(msg.getRole(), msg.getContent()));
-                }
+	@Override
+	public void streamChat(List<ChatMessage> messages, String model, Consumer<String> onChunk,
+			Consumer<String> onComplete, Consumer<String> onError) {
+		streamChat(messages, model, 0.7f, 2048, onChunk, onComplete, onError);
+	}
 
-                String payload = OllamaJsonHelper.buildChatRequest(model, jsonMessages, true);
+	@Override
+	public void streamChat(List<ChatMessage> messages, String model, float temperature, int maxTokens,
+			Consumer<String> onChunk, Consumer<String> onComplete, Consumer<String> onError) {
+		CompletableFuture.runAsync(() -> {
+			StringBuilder fullResponse = new StringBuilder();
+			HttpURLConnection conn = null;
 
-                URL url = new URL(getEndpoint() + "/api/chat");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setConnectTimeout(CONNECT_TIMEOUT);
-                conn.setReadTimeout(READ_TIMEOUT);
-                conn.setDoOutput(true);
+			try {
+				JSONArray jsonMessages = new JSONArray();
+				for (ChatMessage msg : messages) {
+					jsonMessages.put(OllamaJsonHelper.buildChatMessage(msg.getRole(), msg.getContent()));
+				}
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.getBytes(StandardCharsets.UTF_8));
-                    os.flush();
-                }
+				String payload = OllamaJsonHelper.buildChatRequest(model, jsonMessages, true);
 
-                InputStream stream = (conn.getResponseCode() >= 400)
-                        ? conn.getErrorStream()
-                        : conn.getInputStream();
+				URL url = java.net.URI.create(getEndpoint() + "/api/chat").toURL();
+				conn = (HttpURLConnection) url.openConnection();
+				conn.setRequestMethod("POST");
+				conn.setRequestProperty("Content-Type", "application/json");
+				conn.setRequestProperty("Accept", "application/json");
+				conn.setConnectTimeout(getConnectTimeoutMs());
+				conn.setReadTimeout(getReadTimeoutMs());
+				conn.setDoOutput(true);
 
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        String chunk = OllamaJsonHelper.parseChatChunk(line);
-                        if (!chunk.isEmpty()) {
-                            fullResponse.append(chunk);
-                            final String c = chunk;
-                            Display.getDefault().asyncExec(() -> onChunk.accept(c));
-                        }
-                    }
-                }
+				try (OutputStream os = conn.getOutputStream()) {
+					os.write(payload.getBytes(StandardCharsets.UTF_8));
+					os.flush();
+				}
 
-                final String result = fullResponse.toString();
-                Display.getDefault().asyncExec(() -> onComplete.accept(result));
+				InputStream stream = (conn.getResponseCode() >= 400) ? conn.getErrorStream() : conn.getInputStream();
 
-            } catch (Exception e) {
-                final String error = e.getMessage();
-                Display.getDefault().asyncExec(() -> onError.accept(error));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
-            }
-        });
-    }
+				try (BufferedReader reader = new BufferedReader(
+						new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+					String line;
+					while ((line = reader.readLine()) != null) {
+						String chunk = OllamaJsonHelper.parseChatChunk(line);
+						if (!chunk.isEmpty()) {
+							fullResponse.append(chunk);
+							final String c = chunk;
+							Display.getDefault().asyncExec(() -> onChunk.accept(c));
+						}
+					}
+				}
 
-   
-    @Override
-    public String generate(String prompt, String model) {
-        try {
-            String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
-            String response = sendPost(getEndpoint() + "/api/generate", payload);
-            return OllamaJsonHelper.parseGenerateResponse(response);
-        } catch (Exception e) {
-            return "Error: " + e.getMessage();
-        }
-    }
+				final String result = fullResponse.toString();
+				Display.getDefault().asyncExec(() -> onComplete.accept(result));
 
-    @Override
-    public CompletableFuture<String> generateAsync(String prompt, String model) {
-        return CompletableFuture.supplyAsync(() -> generate(prompt, model));
-    }
+			} catch (Exception e) {
+				final String error = e.getMessage();
+				Display.getDefault().asyncExec(() -> onError.accept(error));
+			} finally {
+				if (conn != null) {
+					conn.disconnect();
+				}
+			}
+		});
+	}
 
-    // --- Helper Methods ---
+	@Override
+	public String generate(String prompt, String model) {
+		try {
+			String payload = OllamaJsonHelper.buildGenerateRequest(model, prompt, false);
+			String response = sendPost(getEndpoint() + "/api/generate", payload);
+			return OllamaJsonHelper.parseGenerateResponse(response);
+		} catch (Exception e) {
+			return "Error: " + e.getMessage();
+		}
+	}
 
-    private String sendPost(String endpoint, String payload) throws IOException {
-        URL url = new URL(endpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Accept", "application/json");
-        conn.setConnectTimeout(CONNECT_TIMEOUT);
-        conn.setReadTimeout(READ_TIMEOUT);
-        conn.setDoOutput(true);
+	@Override
+	public CompletableFuture<String> generateAsync(String prompt, String model) {
+		return CompletableFuture.supplyAsync(() -> generate(prompt, model));
+	}
 
-        try {
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-                os.flush();
-            }
-            InputStream stream = (conn.getResponseCode() >= 400)
-                    ? conn.getErrorStream()
-                    : conn.getInputStream();
-            return readResponse(stream);
-        } finally {
-            conn.disconnect();
-        }
-    }
+	// --- Helper Methods ---
 
-    private String readResponse(InputStream stream) throws IOException {
-        StringBuilder response = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            char[] buffer = new char[8192];
-            int len;
-            while ((len = reader.read(buffer)) != -1) {
-                response.append(buffer, 0, len);
-            }
-        }
-        return response.toString();
-    }
+	private String sendPost(String endpoint, String payload) throws IOException {
+		try {
+			return retryPolicy().execute(attempt -> {
+				try {
+					return doPost(endpoint, payload);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			});
+		} catch (LlmException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof IOException) {
+				throw (IOException) cause;
+			}
+			throw new IOException(e.getMessage(), cause);
+		}
+	}
+
+	private String[] doGetModels() throws IOException {
+		URL url = java.net.URI.create(getEndpoint() + "/api/tags").toURL();
+		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+		conn.setRequestMethod("GET");
+		conn.setConnectTimeout(getConnectTimeoutMs());
+		conn.setReadTimeout(getReadTimeoutMs());
+		try {
+			conn.connect();
+			if (conn.getResponseCode() != 200) {
+				throw new IOException("Ollama /api/tags returned HTTP " + conn.getResponseCode());
+			}
+			String response = readResponse(conn.getInputStream());
+			return OllamaJsonHelper.parseModelList(response);
+		} finally {
+			conn.disconnect();
+		}
+	}
+
+	private String doPost(String endpoint, String payload) throws IOException {
+		URL url = java.net.URI.create(endpoint).toURL();
+		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+		conn.setRequestMethod("POST");
+		conn.setRequestProperty("Content-Type", "application/json");
+		conn.setRequestProperty("Accept", "application/json");
+		conn.setConnectTimeout(getConnectTimeoutMs());
+		conn.setReadTimeout(getReadTimeoutMs());
+		conn.setDoOutput(true);
+
+		try {
+			try (OutputStream os = conn.getOutputStream()) {
+				os.write(payload.getBytes(StandardCharsets.UTF_8));
+				os.flush();
+			}
+			InputStream stream = (conn.getResponseCode() >= 400) ? conn.getErrorStream() : conn.getInputStream();
+			return readResponse(stream);
+		} finally {
+			conn.disconnect();
+		}
+	}
+
+	private String readResponse(InputStream stream) throws IOException {
+		StringBuilder response = new StringBuilder();
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+			char[] buffer = new char[8192];
+			int len;
+			while ((len = reader.read(buffer)) != -1) {
+				response.append(buffer, 0, len);
+			}
+		}
+		return response.toString();
+	}
 }

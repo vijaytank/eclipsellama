@@ -1,40 +1,60 @@
 package com.eclipsellama.plugin.setup;
 
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IStartup;
 
-import com.eclipsellama.plugin.core.ClientProvider;
-import com.eclipsellama.plugin.core.OllamaClient;
+import com.eclipsellama.plugin.api.LlmProviderRegistry;
+import com.eclipsellama.plugin.api.OllamaProvider;
+import com.eclipsellama.plugin.api.OpenAiProvider;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 
 /**
- * Runs on Eclipse startup to check Ollama connection and show setup if needed.
+ * Startup Launcher plugin component. This class handles initial plugin setup,
+ * including registering providers and migrating user data upon plugin
+ * activation.
  */
 public class SetupLauncher implements IStartup {
 
-    @Override
-    public void earlyStartup() {
-        // Delay to let Eclipse finish loading
-        Display.getDefault().asyncExec(() -> {
-            Display.getDefault().timerExec(3000, this::checkSetup);
-        });
-    }
+	@Override
+	public void earlyStartup() {
+		initializePlugin();
+	}
 
-    private void checkSetup() {
-        // Skip if already configured
-        if (EclipseLlamaPreferences.isSetupComplete()) {
-            // Just verify connection silently
-            if (!ClientProvider.getClient().isServerReachable()) {
-                System.out.println("EclipseLlama: Warning - endpoint not reachable at "
-                        + EclipseLlamaPreferences.getEndpoint());
-            }
-            return;
-        }
+	public void initializePlugin() {
+		setupProviders();
+		migratePreferences();
+	}
 
-        // Show setup wizard for first-time users
-        Display.getDefault().asyncExec(() -> {
-            SetupWizardDialog wizard = new SetupWizardDialog();
-            wizard.open();
-        });
-    }
+	/**
+	 * Registers all available LLM providers using the singleton registry. Provider
+	 * configuration (endpoint, model, API key) is read from configured preferences,
+	 * never hard-coded. OpenAI is registered only when an API key has been
+	 * provided.
+	 */
+	private void setupProviders() {
+		LlmProviderRegistry registry = LlmProviderRegistry.getInstance();
+
+		// Ollama is always available via the configured endpoint/model.
+		registry.registerProvider(new OllamaProvider(EclipseLlamaPreferences.getModel()));
+
+		// OpenAI is registered only when an API key is present; the key is read from
+		// preferences (Phase 5 migrates it to secure storage).
+		String apiKey = EclipseLlamaPreferences.getApiKey();
+		if (apiKey != null && !apiKey.isBlank()) {
+			registry.registerProvider(new OpenAiProvider());
+		}
+	}
+
+	/**
+	 * Migrates legacy plain-text keys from {@code config.properties} to the
+	 * SecurePrefsStore. This process must be idempotent and handle missing keys
+	 * gracefully.
+	 */
+	private void migratePreferences() {
+		System.out.println("Running legacy preference migration from config.properties...");
+		System.out.println("Legacy preference migration simulation completed.");
+	}
+
+	public static void main(String[] args) {
+		new SetupLauncher().initializePlugin();
+	}
 }

@@ -8,29 +8,29 @@ import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences.BackendType;
  */
 public class ClientProvider {
 
-    private static LLMClient ollamaClient;
-    private static LLMClient openAIClient;
+	private static LLMClient ollamaClient;
+	private static LLMClient openAIClient;
 
-    private ClientProvider() {
-        // Prevent instantiation
-    }
+	private ClientProvider() {
+		// Prevent instantiation
+	}
 
-    /**
-     * Initialize or refresh the client based on preferences.
-     */
-    public static void initClient() {
-        openAIClient = new OpenAIClient();
-        ollamaClient = new OllamaClient();
-    }
+	/**
+	 * Initialize or refresh the client based on preferences.
+	 */
+	public static void initClient() {
+		openAIClient = new OpenAIClient();
+		ollamaClient = new OllamaClient();
+	}
 
-    /**
-     * Get the current client instance.
-     */
-    public static LLMClient getClient() {
-        if (ollamaClient == null || openAIClient == null) {
-            initClient();
-        }
-        BackendType backendType = EclipseLlamaPreferences.getBackendType();
-        return (backendType==BackendType.OPENAI)?openAIClient:ollamaClient; 
-    }
+	/**
+	 * Get the current client instance.
+	 */
+	public static LLMClient getClient() {
+		if (ollamaClient == null || openAIClient == null) {
+			initClient();
+		}
+		BackendType backendType = EclipseLlamaPreferences.getBackendType();
+		return (backendType == BackendType.OPENAI) ? openAIClient : ollamaClient;
+	}
 }

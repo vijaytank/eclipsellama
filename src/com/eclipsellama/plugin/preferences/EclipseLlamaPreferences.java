@@ -9,214 +9,262 @@ import java.nio.file.Paths;
 import java.util.Properties;
 
 /**
- * Preferences manager for EclipseLlama.
- * Stores settings in ~/.eclipsellama/config.properties
+ * Preferences manager for EclipseLlama. Stores settings in
+ * ~/.eclipsellama/config.properties
  */
 public final class EclipseLlamaPreferences {
 
-    private static final String CONFIG_DIR = ".eclipsellama";
-    private static final String CONFIG_FILE = "config.properties";
+	private static final String CONFIG_DIR = ".eclipsellama";
+	private static final String CONFIG_FILE = "config.properties";
 
-    // Keys
-    private static final String KEY_ENDPOINT = "ollama.endpoint";
-    private static final String KEY_MODEL = "ollama.model";
-    private static final String KEY_SETUP_COMPLETE = "setup.complete";
-    private static final String KEY_COMMIT_PROMPT = "commit.prompt";
-    private static final String KEY_API_KEY = "api.key";
+	// Keys
+	private static final String KEY_ENDPOINT = "ollama.endpoint";
+	private static final String KEY_MODEL = "ollama.model";
+	private static final String KEY_SETUP_COMPLETE = "setup.complete";
+	private static final String KEY_COMMIT_PROMPT = "commit.prompt";
+	private static final String KEY_API_KEY = "api.key";
+	private static final String KEY_TIMEOUT_SECONDS = "eclipsellama.timeout.seconds";
+	private static final String KEY_RETRY_ATTEMPTS = "eclipsellama.retry.attempts";
 
-    // Defaults
-    private static final String DEFAULT_ENDPOINT = "http://localhost:11434";
-    private static final String DEFAULT_MODEL = "codellama";
-    private static final String DEFAULT_COMMIT_PROMPT = "Generate a concise Conventional Commit message for the following Git diff. "
-            + "Format: type(scope): description\\n\\n[optional body]";
+	// Defaults
+	private static final String DEFAULT_ENDPOINT = "http://localhost:11434";
+	private static final String DEFAULT_MODEL = "codellama";
+	private static final int DEFAULT_TIMEOUT_SECONDS = 60;
+	private static final int DEFAULT_RETRY_ATTEMPTS = 3;
+	private static final int MIN_TIMEOUT_SECONDS = 10;
+	private static final int MAX_TIMEOUT_SECONDS = 300;
+	private static final int MIN_RETRY_ATTEMPTS = 1;
+	private static final int MAX_RETRY_ATTEMPTS = 5;
+	private static final String DEFAULT_COMMIT_PROMPT = "Generate a concise Conventional Commit message for the following Git diff. "
+			+ "Format: type(scope): description\\n\\n[optional body]";
 
-    private static Properties properties;
-    private static boolean loaded = false;
-    
-    public enum BackendType {
-    	OLLAMA,
-    	OPENAI
-    }
+	private static Properties properties;
+	private static boolean loaded = false;
 
-    private EclipseLlamaPreferences() {
-        // Utility class
-    }
+	public enum BackendType {
+		OLLAMA, OPENAI
+	}
 
-    /**
-     * Get the config directory path.
-     */
-    private static Path getConfigDir() {
-        return Paths.get(System.getProperty("user.home"), CONFIG_DIR);
-    }
+	private EclipseLlamaPreferences() {
+		// Utility class
+	}
 
-    /**
-     * Get the config file path.
-     */
-    private static Path getConfigFile() {
-        return getConfigDir().resolve(CONFIG_FILE);
-    }
+	/**
+	 * Get the config directory path.
+	 */
+	private static Path getConfigDir() {
+		return Paths.get(System.getProperty("user.home"), CONFIG_DIR);
+	}
 
-    /**
-     * Load preferences from disk.
-     */
-    private static synchronized void load() {
-        if (loaded) {
-            return;
-        }
+	/**
+	 * Get the config file path.
+	 */
+	private static Path getConfigFile() {
+		return getConfigDir().resolve(CONFIG_FILE);
+	}
 
-        properties = new Properties();
+	/**
+	 * Load preferences from disk.
+	 */
+	private static synchronized void load() {
+		if (loaded) {
+			return;
+		}
 
-        // Set defaults
-        properties.setProperty(KEY_ENDPOINT, DEFAULT_ENDPOINT);
-        properties.setProperty(KEY_MODEL, DEFAULT_MODEL);
-        properties.setProperty(KEY_SETUP_COMPLETE, "false");
-        properties.setProperty(KEY_COMMIT_PROMPT, DEFAULT_COMMIT_PROMPT);
-        properties.setProperty(KEY_API_KEY, "");
+		properties = new Properties();
 
-        // Load from file if exists
-        Path configFile = getConfigFile();
-        if (Files.exists(configFile)) {
-            try (FileInputStream fis = new FileInputStream(configFile.toFile())) {
-                properties.load(fis);
-            } catch (IOException e) {
-                System.err.println("EclipseLlama: Failed to load config: " + e.getMessage());
-            }
-        }
+		// Set defaults
+		properties.setProperty(KEY_ENDPOINT, DEFAULT_ENDPOINT);
+		properties.setProperty(KEY_MODEL, DEFAULT_MODEL);
+		properties.setProperty(KEY_SETUP_COMPLETE, "false");
+		properties.setProperty(KEY_COMMIT_PROMPT, DEFAULT_COMMIT_PROMPT);
+		properties.setProperty(KEY_API_KEY, "");
+		properties.setProperty(KEY_TIMEOUT_SECONDS, String.valueOf(DEFAULT_TIMEOUT_SECONDS));
+		properties.setProperty(KEY_RETRY_ATTEMPTS, String.valueOf(DEFAULT_RETRY_ATTEMPTS));
 
-        loaded = true;
-    }
+		// Load from file if exists
+		Path configFile = getConfigFile();
+		if (Files.exists(configFile)) {
+			try (FileInputStream fis = new FileInputStream(configFile.toFile())) {
+				properties.load(fis);
+			} catch (IOException e) {
+				System.err.println("EclipseLlama: Failed to load config: " + e.getMessage());
+			}
+		}
 
-    /**
-     * Save preferences to disk.
-     */
-    public static synchronized void save() {
-        if (properties == null) {
-            return;
-        }
+		loaded = true;
+	}
 
-        Path configDir = getConfigDir();
-        Path configFile = getConfigFile();
+	/**
+	 * Save preferences to disk.
+	 */
+	public static synchronized void save() {
+		if (properties == null) {
+			return;
+		}
 
-        try {
-            Files.createDirectories(configDir);
-            try (FileOutputStream fos = new FileOutputStream(configFile.toFile())) {
-                properties.store(fos, "EclipseLlama Configuration");
-            }
-        } catch (IOException e) {
-            System.err.println("EclipseLlama: Failed to save config: " + e.getMessage());
-        }
-    }
+		Path configDir = getConfigDir();
+		Path configFile = getConfigFile();
 
-    /**
-     * Get endpoint URL.
-     */
-    public static String getEndpoint() {
-        load();
-        return properties.getProperty(KEY_ENDPOINT, DEFAULT_ENDPOINT);
-    }
+		try {
+			Files.createDirectories(configDir);
+			try (FileOutputStream fos = new FileOutputStream(configFile.toFile())) {
+				properties.store(fos, "EclipseLlama Configuration");
+			}
+		} catch (IOException e) {
+			System.err.println("EclipseLlama: Failed to save config: " + e.getMessage());
+		}
+	}
 
-    /**
-     * Set endpoint URL.
-     */
-    public static void setEndpoint(String endpoint) {
-        load();
-        properties.setProperty(KEY_ENDPOINT,
-                (endpoint == null || endpoint.isBlank()) ? DEFAULT_ENDPOINT : endpoint.trim());
-    }
+	/**
+	 * Get endpoint URL.
+	 */
+	public static String getEndpoint() {
+		load();
+		return properties.getProperty(KEY_ENDPOINT, DEFAULT_ENDPOINT);
+	}
 
-    /**
-     * Get selected model name.
-     */
-    public static String getModel() {
-        load();
-        return properties.getProperty(KEY_MODEL, DEFAULT_MODEL);
-    }
+	/**
+	 * Set endpoint URL.
+	 */
+	public static void setEndpoint(String endpoint) {
+		load();
+		properties.setProperty(KEY_ENDPOINT,
+				(endpoint == null || endpoint.isBlank()) ? DEFAULT_ENDPOINT : endpoint.trim());
+	}
 
-    /**
-     * Set selected model name.
-     */
-    public static void setModel(String model) {
-        load();
-        properties.setProperty(KEY_MODEL,
-                (model == null || model.isBlank()) ? DEFAULT_MODEL : model.trim());
-    }
-    
-    /**
-     * Get api key.
-     */
-    public static String getApiKey() {
-        load();
-        return properties.getProperty(KEY_API_KEY, "");
-    }
+	/**
+	 * Get selected model name.
+	 */
+	public static String getModel() {
+		load();
+		return properties.getProperty(KEY_MODEL, DEFAULT_MODEL);
+	}
 
-    /**
-     * Set api key.
-     */
-    public static void setApiKey(String key) {
-        load();
-        properties.setProperty(KEY_API_KEY,
-                (key == null || key.isBlank()) ? "" : key.trim());
-    }
+	/**
+	 * Set selected model name.
+	 */
+	public static void setModel(String model) {
+		load();
+		properties.setProperty(KEY_MODEL, (model == null || model.isBlank()) ? DEFAULT_MODEL : model.trim());
+	}
 
-    /**
-     * Check if initial setup is complete.
-     */
-    public static boolean isSetupComplete() {
-        load();
-        return Boolean.parseBoolean(properties.getProperty(KEY_SETUP_COMPLETE, "false"));
-    }
+	/**
+	 * Get api key.
+	 */
+	public static String getApiKey() {
+		load();
+		return properties.getProperty(KEY_API_KEY, "");
+	}
 
-    /**
-     * Mark setup as complete.
-     */
-    public static void setSetupComplete(boolean complete) {
-        load();
-        properties.setProperty(KEY_SETUP_COMPLETE, String.valueOf(complete));
-    }
+	/**
+	 * Set api key.
+	 */
+	public static void setApiKey(String key) {
+		load();
+		properties.setProperty(KEY_API_KEY, (key == null || key.isBlank()) ? "" : key.trim());
+	}
 
-    /**
-     * Get commit message prompt template.
-     */
-    public static String getCommitPrompt() {
-        load();
-        return properties.getProperty(KEY_COMMIT_PROMPT, DEFAULT_COMMIT_PROMPT);
-    }
+	/**
+	 * Check if initial setup is complete.
+	 */
+	public static boolean isSetupComplete() {
+		load();
+		return Boolean.parseBoolean(properties.getProperty(KEY_SETUP_COMPLETE, "false"));
+	}
 
-    /**
-     * Set commit message prompt template.
-     */
-    public static void setCommitPrompt(String prompt) {
-        load();
-        properties.setProperty(KEY_COMMIT_PROMPT,
-                (prompt == null || prompt.isBlank()) ? DEFAULT_COMMIT_PROMPT : prompt);
-    }
+	/**
+	 * Mark setup as complete.
+	 */
+	public static void setSetupComplete(boolean complete) {
+		load();
+		properties.setProperty(KEY_SETUP_COMPLETE, String.valueOf(complete));
+	}
 
-    /**
-     * Get recommended code models.
-     */
-    public static String[] getRecommendedCodeModels() {
-        return new String[] {
-                "codellama",
-                "codellama:7b",
-                "codellama:13b",
-                "deepseek-coder",
-                "deepseek-coder:6.7b",
-                "qwen2.5-coder",
-                "starcoder2"
-        };
-    }
+	/**
+	 * Get commit message prompt template.
+	 */
+	public static String getCommitPrompt() {
+		load();
+		return properties.getProperty(KEY_COMMIT_PROMPT, DEFAULT_COMMIT_PROMPT);
+	}
 
-    /**
-     * Check if config file exists (for first-run detection).
-     */
-    public static boolean configExists() {
-        return Files.exists(getConfigFile());
-    }
-    
-    /**
-     * Get backend type
-     */
-    public static BackendType getBackendType() {
-    	return (getEndpoint()!=null && getEndpoint().contains("v1"))?BackendType.OPENAI:BackendType.OLLAMA;
-    }
+	/**
+	 * Set commit message prompt template.
+	 */
+	public static void setCommitPrompt(String prompt) {
+		load();
+		properties.setProperty(KEY_COMMIT_PROMPT,
+				(prompt == null || prompt.isBlank()) ? DEFAULT_COMMIT_PROMPT : prompt);
+	}
+
+	/**
+	 * Get recommended code models.
+	 */
+	public static String[] getRecommendedCodeModels() {
+		return new String[] { "codellama", "codellama:7b", "codellama:13b", "deepseek-coder", "deepseek-coder:6.7b",
+				"qwen2.5-coder", "starcoder2" };
+	}
+
+	/**
+	 * Check if config file exists (for first-run detection).
+	 */
+	public static boolean configExists() {
+		return Files.exists(getConfigFile());
+	}
+
+	/**
+	 * Get configured timeout in seconds, clamped to the range 10-300.
+	 */
+	public static int getTimeoutSeconds() {
+		load();
+		return clamp(parseInt(properties.getProperty(KEY_TIMEOUT_SECONDS, String.valueOf(DEFAULT_TIMEOUT_SECONDS)),
+				DEFAULT_TIMEOUT_SECONDS), MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS);
+	}
+
+	/**
+	 * Set the configured timeout in seconds (clamped to the range 10-300).
+	 */
+	public static void setTimeoutSeconds(int seconds) {
+		load();
+		properties.setProperty(KEY_TIMEOUT_SECONDS,
+				String.valueOf(clamp(seconds, MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)));
+	}
+
+	/**
+	 * Get the configured retry attempt count, clamped to the range 1-5.
+	 */
+	public static int getRetryAttempts() {
+		load();
+		return clamp(parseInt(properties.getProperty(KEY_RETRY_ATTEMPTS, String.valueOf(DEFAULT_RETRY_ATTEMPTS)),
+				DEFAULT_RETRY_ATTEMPTS), MIN_RETRY_ATTEMPTS, MAX_RETRY_ATTEMPTS);
+	}
+
+	/**
+	 * Set the configured retry attempt count (clamped to the range 1-5).
+	 */
+	public static void setRetryAttempts(int attempts) {
+		load();
+		properties.setProperty(KEY_RETRY_ATTEMPTS,
+				String.valueOf(clamp(attempts, MIN_RETRY_ATTEMPTS, MAX_RETRY_ATTEMPTS)));
+	}
+
+	private static int parseInt(String value, int fallback) {
+		try {
+			return Integer.parseInt(value.trim());
+		} catch (Exception e) {
+			return fallback;
+		}
+	}
+
+	private static int clamp(int value, int min, int max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
+	/**
+	 * Get backend type
+	 */
+	public static BackendType getBackendType() {
+		return (getEndpoint() != null && getEndpoint().contains("v1")) ? BackendType.OPENAI : BackendType.OLLAMA;
+	}
 }

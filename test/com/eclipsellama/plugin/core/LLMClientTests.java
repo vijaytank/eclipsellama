@@ -1,94 +1,62 @@
 package com.eclipsellama.plugin.core;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.junit.Test;
 
 /**
- * Unit tests for LLM Client logic (JSON helpers, etc).
- * Can run without Eclipse dependencies.
+ * Unit tests for LLM Client logic (JSON helpers, etc). Can run without Eclipse
+ * dependencies, as a plain JUnit test.
  */
 public class LLMClientTests {
 
-    private static int totalPassed = 0;
-    private static int totalFailed = 0;
+	@Test
+	public void testOllamaBuildChatRequest() {
+		JSONArray messages = new JSONArray();
+		messages.put(OllamaJsonHelper.buildChatMessage("user", "hi"));
+		String json = OllamaJsonHelper.buildChatRequest("llama2", messages, true);
+		JSONObject obj = new JSONObject(json);
+		assertEquals("llama2", obj.getString("model"));
+		assertTrue(obj.getBoolean("stream"));
+	}
 
-    public static void main(String[] args) {
-        System.out.println("╔════════════════════════════════════════╗");
-        System.out.println("║     LLM Client Logic Tests             ║");
-        System.out.println("╚════════════════════════════════════════╝\n");
+	@Test
+	public void testOllamaParseChatChunk() {
+		String json = "{\"message\":{\"role\":\"assistant\",\"content\":\"hello\"},\"done\":false}";
+		assertEquals("hello", OllamaJsonHelper.parseChatChunk(json));
+	}
 
-        testOllamaJsonHelper();
-        testOpenAIJsonHelper();
+	@Test
+	public void testOllamaIsDone() {
+		assertTrue(OllamaJsonHelper.isDone("{\"done\":true}"));
+	}
 
-        System.out.println("\n╔════════════════════════════════════════╗");
-        System.out.println("║  Results: " + totalPassed + " passed, " + totalFailed + " failed");
-        System.out.println("╚════════════════════════════════════════╝");
+	@Test
+	public void testOpenAIBuildChatRequest() {
+		JSONArray messages = new JSONArray();
+		messages.put(OpenAIJsonHelper.buildChatMessage("user", "hi"));
+		String json = OpenAIJsonHelper.buildOpenAIChatRequest("gpt-3.5-turbo", messages, true);
+		JSONObject obj = new JSONObject(json);
+		assertEquals("gpt-3.5-turbo", obj.getString("model"));
+		assertTrue(obj.getBoolean("stream"));
+	}
 
-        if (totalFailed > 0) {
-            System.exit(1);
-        }
-    }
+	@Test
+	public void testOpenAIParseChunkSse() {
+		String sse = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}";
+		assertEquals("hello", OpenAIJsonHelper.parseOpenAIChatChunk(sse));
+	}
 
-    private static void testOllamaJsonHelper() {
-        System.out.println("━━━ Ollama JSON Helper Tests ━━━");
+	@Test
+	public void testOpenAIParseChunkDoneMarker() {
+		assertEquals(null, OpenAIJsonHelper.parseOpenAIChatChunk("data: [DONE]"));
+	}
 
-        test("Ollama buildChatRequest", () -> {
-            JSONArray messages = new JSONArray();
-            messages.put(OllamaJsonHelper.buildChatMessage("user", "hi"));
-            String json = OllamaJsonHelper.buildChatRequest("llama2", messages, true);
-            JSONObject obj = new JSONObject(json);
-            return "llama2".equals(obj.getString("model")) && obj.getBoolean("stream");
-        });
-
-        test("Ollama parseChatChunk", () -> {
-            String json = "{\"message\":{\"role\":\"assistant\",\"content\":\"hello\"},\"done\":false}";
-            return "hello".equals(OllamaJsonHelper.parseChatChunk(json));
-        });
-        
-        test("Ollama isDone", () -> {
-            String json = "{\"done\":true}";
-            return OllamaJsonHelper.isDone(json);
-        });
-    }
-
-    private static void testOpenAIJsonHelper() {
-        System.out.println("\n━━━ OpenAI JSON Helper Tests ━━━");
-
-        test("OpenAI buildOpenAIChatRequest", () -> {
-            JSONArray messages = new JSONArray();
-            messages.put(OpenAIJsonHelper.buildChatMessage("user", "hi"));
-            String json = OpenAIJsonHelper.buildOpenAIChatRequest("gpt-3.5-turbo", messages, true);
-            JSONObject obj = new JSONObject(json);
-            return "gpt-3.5-turbo".equals(obj.getString("model")) && obj.getBoolean("stream");
-        });
-
-        test("OpenAI parseOpenAIChatChunk (SSE format)", () -> {
-            String sse = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}";
-            return "hello".equals(OpenAIJsonHelper.parseOpenAIChatChunk(sse));
-        });
-
-        test("OpenAI parseOpenAIChatChunk ([DONE] marker)", () -> {
-            String done = "data: [DONE]";
-            return OpenAIJsonHelper.parseOpenAIChatChunk(done) == null;
-        });
-
-        test("OpenAI isOpenAIDone", () -> {
-            return OpenAIJsonHelper.isOpenAIDone("data: [DONE]") || OpenAIJsonHelper.isOpenAIDone("[DONE]");
-        });
-    }
-
-    private static void test(String name, java.util.function.BooleanSupplier test) {
-        try {
-            if (test.getAsBoolean()) {
-                System.out.println("  ✅ " + name);
-                totalPassed++;
-            } else {
-                System.out.println("  ❌ " + name);
-                totalFailed++;
-            }
-        } catch (Exception e) {
-            System.out.println("  ❌ " + name + " - " + e.getMessage());
-            totalFailed++;
-        }
-    }
+	@Test
+	public void testOpenAIIsDone() {
+		assertTrue(OpenAIJsonHelper.isOpenAIDone("data: [DONE]") || OpenAIJsonHelper.isOpenAIDone("[DONE]"));
+	}
 }

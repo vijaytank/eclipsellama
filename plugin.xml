@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin>
-
   <!-- 🦙 EclipseLlama Perspective -->
   <extension point="org.eclipse.ui.perspectives">
     <perspective
@@ -21,14 +20,12 @@
 
   <!-- 🦙 Place Chat View on Left in Perspective -->
   <extension point="org.eclipse.ui.perspectiveExtensions">
-    <perspectiveExtension targetID="com.eclipsellama.plugin.perspective">
-      <view
-        id="com.eclipsellama.plugin.view.chat"
-        relative="org.eclipse.ui.editors"
-        relationship="left"
-        visible="true"
-        ratio="0.25"/>
-    </perspectiveExtension>
+    <view
+      id="com.eclipsellama.plugin.view.chat"
+      relative="org.eclipse.ui.editors"
+      relationship="left"
+      visible="true"
+      ratio="0.25"/>
   </extension>
 
   <!-- 🦙 First-Time Setup -->
@@ -37,60 +34,67 @@
   </extension>
 
   <!-- 🦙 Preferences Page -->
-  <extension point="org.eclipse.ui.preferencePages">
-    <page
-      id="com.eclipsellama.plugin.preferences"
-      name="EclipseLlama"
-      icon="icons/setting.png"
-      class="com.eclipsellama.plugin.preferences.EclipseLlamaPreferencePage"/>
-  </extension>
+    <extension point="org.eclipse.ui.preferencePages">
+      <!-- Category for EclipseLlama preferences -->
+      <category
+        id="com.eclipsellama.plugin.preference.category"
+        name="EclipseLlama"/>
+      <page
+        id="com.eclipsellama.plugin.preferences"
+        name="EclipseLlama"
+        icon="icons/setting.png"
+        class="com.eclipsellama.plugin.preferences.EclipseLlamaPreferencePage"
+        categoryId="com.eclipsellama.plugin.preference.category"/>
+      <!-- NEW MCP PREFERENCE PAGE -->
+      <page
+        id="com.eclipsellama.plugin.preferences.mcp"
+        name="MCP Servers"
+        class="com.eclipsellama.plugin.preferences.McpPreferencePage"
+        icon="icons/setting.png"
+        categoryId="com.eclipsellama.plugin.preference.category"/>
+    </extension>
 
   <!-- 🦙 Commands -->
   <extension point="org.eclipse.ui.commands">
-    <category
-      id="com.eclipsellama.plugin.category"
-      name="EclipseLlama"/>
-    
-    <!-- Open Chat -->
+    <category id="com.eclipsellama.plugin.category" name="EclipseLlama"/>
+
+    <!-- Existing commands (unchanged) -->
     <command
       id="com.eclipsellama.plugin.command.openChat"
       name="Open EclipseLlama Chat"
       description="Open the EclipseLlama chat view"
       categoryId="com.eclipsellama.plugin.category"/>
-    
-    <!-- Explain Code -->
     <command
       id="com.eclipsellama.plugin.command.explainCode"
       name="Explain Code"
       description="Explain selected code with AI"
       categoryId="com.eclipsellama.plugin.category"/>
-    
-    <!-- Fix Code -->
     <command
       id="com.eclipsellama.plugin.command.fixCode"
       name="Fix Code"
       description="Suggest fixes for selected code"
       categoryId="com.eclipsellama.plugin.category"/>
-    
-    <!-- Generate Tests -->
     <command
       id="com.eclipsellama.plugin.command.generateTests"
       name="Generate Tests"
       description="Generate unit tests for selected code"
       categoryId="com.eclipsellama.plugin.category"/>
-    
-    <!-- Document Code -->
     <command
       id="com.eclipsellama.plugin.command.documentCode"
       name="Add Documentation"
       description="Generate Javadoc for selected code"
       categoryId="com.eclipsellama.plugin.category"/>
-    
-    <!-- Generate Commit Message -->
     <command
       id="com.eclipsellama.plugin.command.generateCommit"
       name="Generate Commit Message"
       description="Generate AI commit message from git diff"
+      categoryId="com.eclipsellama.plugin.category"/>
+
+    <!-- NEW COMMAND: Open MCP -->
+    <command
+      id="com.eclipsellama.plugin.command.openMcp"
+      name="Open MCP Server"
+      description="Open an MCP server configuration"
       categoryId="com.eclipsellama.plugin.category"/>
   </extension>
 
@@ -114,6 +118,11 @@
     <handler
       commandId="com.eclipsellama.plugin.command.generateCommit"
       class="com.eclipsellama.plugin.handlers.GenerateCommitHandler"/>
+
+    <!-- NEW HANDLER: Open MCP -->
+    <handler
+      commandId="com.eclipsellama.plugin.command.openMcp"
+      class="com.eclipsellama.plugin.handlers.OpenMcpHandler"/>
   </extension>
 
   <!-- 🦙 Context Menu for Java Editor -->
@@ -125,7 +134,7 @@
         label="EclipseLlama Chat"
         icon="icons/chat.png"/>
     </menuContribution>
-    
+
     <!-- Universal Popup Menu - Works Everywhere -->
     <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
       <menu
@@ -187,5 +196,4 @@
       <partition type="__dftl_partition_content_type"/>
     </proposalComputer>
   </extension>
-
 </plugin>

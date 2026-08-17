@@ -23,3 +23,5 @@ Thumbs.db
 *.log
 
 .metadata/
+
+.superbrain

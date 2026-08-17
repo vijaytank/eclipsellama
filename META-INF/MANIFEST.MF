@@ -23,7 +23,10 @@ Require-Bundle:
  org.eclipse.jdt.ui,
  org.eclipse.egit.ui;resolution:=optional,
  org.eclipse.jgit;resolution:=optional,
- org.eclipse.team.core;resolution:=optional
+ org.eclipse.team.core;resolution:=optional,
+ org.eclipse.compare,
+ org.eclipse.equinox.security,
+ org.junit;bundle-version="4.13.2"
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Export-Package: com.eclipsellama.plugin.core,
  com.eclipsellama.plugin.preferences

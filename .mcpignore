@@ -1,0 +1,12 @@
+# NakshAstraMCP Ignore File
+# Paths matching these patterns will be excluded from indexing and AST parsing.
+
+# Default patterns (already built-in to the server)
+# .git/
+# .mcp_index/
+# __pycache__/
+# node_modules/
+# .venv/
+# *.pyc
+
+# Add your custom exclusions below (e.g. build directories, large data files, compiled binaries)

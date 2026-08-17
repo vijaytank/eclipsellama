@@ -12,19 +12,17 @@ import org.eclipse.ui.PlatformUI;
  */
 public class OpenChatHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        try {
-            IWorkbenchPage page = PlatformUI.getWorkbench()
-                    .getActiveWorkbenchWindow()
-                    .getActivePage();
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		try {
+			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 
-            if (page != null) {
-                page.showView("com.eclipsellama.plugin.view.chat");
-            }
-        } catch (PartInitException e) {
-            throw new ExecutionException("Failed to open EclipseLlama chat", e);
-        }
-        return null;
-    }
+			if (page != null) {
+				page.showView("com.eclipsellama.plugin.view.chat");
+			}
+		} catch (PartInitException e) {
+			throw new ExecutionException("Failed to open EclipseLlama chat", e);
+		}
+		return null;
+	}
 }

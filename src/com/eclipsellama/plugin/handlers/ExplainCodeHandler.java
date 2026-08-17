@@ -19,35 +19,33 @@ import com.eclipsellama.plugin.ui.chat.ChatView;
  */
 public class ExplainCodeHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        String selectedText = getSelectedText(event);
-        if (selectedText == null || selectedText.isEmpty()) {
-            return null;
-        }
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		String selectedText = getSelectedText(event);
+		if (selectedText == null || selectedText.isEmpty()) {
+			return null;
+		}
 
-        try {
-            IWorkbenchPage page = PlatformUI.getWorkbench()
-                    .getActiveWorkbenchWindow()
-                    .getActivePage();
+		try {
+			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 
-            ChatView chatView = (ChatView) page.showView("com.eclipsellama.plugin.view.chat");
-            chatView.setContext(selectedText, "explain");
-        } catch (PartInitException e) {
-            throw new ExecutionException("Failed to open chat view", e);
-        }
+			ChatView chatView = (ChatView) page.showView("com.eclipsellama.plugin.view.chat");
+			chatView.setContext(selectedText, "explain");
+		} catch (PartInitException e) {
+			throw new ExecutionException("Failed to open chat view", e);
+		}
 
-        return null;
-    }
+		return null;
+	}
 
-    protected String getSelectedText(ExecutionEvent event) {
-        IEditorPart editor = HandlerUtil.getActiveEditor(event);
-        if (editor instanceof ITextEditor textEditor) {
-            ISelection selection = textEditor.getSelectionProvider().getSelection();
-            if (selection instanceof ITextSelection textSelection) {
-                return textSelection.getText();
-            }
-        }
-        return null;
-    }
+	protected String getSelectedText(ExecutionEvent event) {
+		IEditorPart editor = HandlerUtil.getActiveEditor(event);
+		if (editor instanceof ITextEditor textEditor) {
+			ISelection selection = textEditor.getSelectionProvider().getSelection();
+			if (selection instanceof ITextSelection textSelection) {
+				return textSelection.getText();
+			}
+		}
+		return null;
+	}
 }

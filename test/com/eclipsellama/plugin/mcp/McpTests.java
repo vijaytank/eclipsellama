@@ -7,8 +7,8 @@ import static org.junit.Assert.fail;
 import org.junit.Test;
 
 /**
- * Unit tests for MCP components. Tests can run without Eclipse dependencies,
- * as a plain JUnit test.
+ * Unit tests for MCP components. Tests can run without Eclipse dependencies, as
+ * a plain JUnit test.
  */
 public class McpTests {
 

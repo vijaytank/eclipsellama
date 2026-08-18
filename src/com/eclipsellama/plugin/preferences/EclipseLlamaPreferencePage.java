@@ -31,6 +31,12 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 	private Text timeoutText;
 	private Text retryText;
 	private Label statusLabel;
+	private Combo searchProviderCombo;
+	private Combo searchModeCombo;
+	private Text searchMaxResultsText;
+	private Text searchApiKeyText;
+	private Text searchSearxngEndpointText;
+	private Button searchFallbackButton;
 
 	@Override
 	public void init(IWorkbench workbench) {
@@ -45,6 +51,7 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		createConnectionGroup(container);
 		createRetryGroup(container);
 		createModelGroup(container);
+		createSearchGroup(container);
 		createPromptsGroup(container);
 
 		loadPreferences();
@@ -116,6 +123,40 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		infoLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
 	}
 
+	private void createSearchGroup(Composite parent) {
+		Group group = new Group(parent, SWT.NONE);
+		group.setText("Web Search");
+		group.setLayout(new GridLayout(2, false));
+		group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+
+		new Label(group, SWT.NONE).setText("Provider:");
+		searchProviderCombo = new Combo(group, SWT.DROP_DOWN | SWT.READ_ONLY);
+		searchProviderCombo.setItems(new String[] { "builtin", "searxng", "brave", "disabled" });
+		searchProviderCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("Mode:");
+		searchModeCombo = new Combo(group, SWT.DROP_DOWN | SWT.READ_ONLY);
+		searchModeCombo.setItems(new String[] { "off", "smart", "ask", "always" });
+		searchModeCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("Max results (1-10):");
+		searchMaxResultsText = new Text(group, SWT.BORDER);
+		searchMaxResultsText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("SearXNG endpoint:");
+		searchSearxngEndpointText = new Text(group, SWT.BORDER);
+		searchSearxngEndpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("Search API key (Brave):");
+		searchApiKeyText = new Text(group, SWT.BORDER | SWT.PASSWORD);
+		searchApiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("Fallback:");
+		searchFallbackButton = new Button(group, SWT.CHECK);
+		searchFallbackButton.setText("Use built-in search if selected provider is unavailable");
+		searchFallbackButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+	}
+
 	private void createPromptsGroup(Composite parent) {
 		Group group = new Group(parent, SWT.NONE);
 		group.setText("Commit Message Prompt");
@@ -136,6 +177,13 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		apiKeyText.setText(EclipseLlamaPreferences.getApiKey());
 		timeoutText.setText(String.valueOf(EclipseLlamaPreferences.getTimeoutSeconds()));
 		retryText.setText(String.valueOf(EclipseLlamaPreferences.getRetryAttempts()));
+		searchProviderCombo
+				.select(indexOf(searchProviderCombo.getItems(), EclipseLlamaPreferences.getSearchProvider()));
+		searchModeCombo.select(indexOf(searchModeCombo.getItems(), EclipseLlamaPreferences.getSearchMode()));
+		searchMaxResultsText.setText(String.valueOf(EclipseLlamaPreferences.getSearchMaxResults()));
+		searchApiKeyText.setText(EclipseLlamaPreferences.getSearchApiKey());
+		searchSearxngEndpointText.setText(EclipseLlamaPreferences.getSearchSearxngEndpoint());
+		searchFallbackButton.setSelection(EclipseLlamaPreferences.getSearchFallbackToBuiltin());
 		commitPromptText.setText(EclipseLlamaPreferences.getCommitPrompt());
 
 		// Load models
@@ -210,6 +258,12 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		EclipseLlamaPreferences.setCommitPrompt(commitPromptText.getText());
 		EclipseLlamaPreferences.setTimeoutSeconds(parseInt(timeoutText.getText(), 60));
 		EclipseLlamaPreferences.setRetryAttempts(parseInt(retryText.getText(), 3));
+		EclipseLlamaPreferences.setSearchProvider(selectedItem(searchProviderCombo));
+		EclipseLlamaPreferences.setSearchMode(selectedItem(searchModeCombo));
+		EclipseLlamaPreferences.setSearchMaxResults(parseInt(searchMaxResultsText.getText(), 5));
+		EclipseLlamaPreferences.setSearchApiKey(searchApiKeyText.getText());
+		EclipseLlamaPreferences.setSearchSearxngEndpoint(searchSearxngEndpointText.getText());
+		EclipseLlamaPreferences.setSearchFallbackToBuiltin(searchFallbackButton.getSelection());
 		EclipseLlamaPreferences.save();
 	}
 
@@ -221,12 +275,31 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		}
 	}
 
+	private int indexOf(String[] items, String value) {
+		for (int i = 0; i < items.length; i++) {
+			if (items[i].equalsIgnoreCase(value)) {
+				return i;
+			}
+		}
+		return 0;
+	}
+
+	private String selectedItem(Combo combo) {
+		int sel = combo.getSelectionIndex();
+		return sel >= 0 ? combo.getItem(sel) : combo.getText();
+	}
+
 	@Override
 	protected void performDefaults() {
 		endpointText.setText("http://localhost:11434");
 		modelCombo.setText("codellama");
 		timeoutText.setText("60");
 		retryText.setText("3");
+		searchProviderCombo.select(0);
+		searchMaxResultsText.setText("5");
+		searchApiKeyText.setText("");
+		searchSearxngEndpointText.setText("");
+		searchFallbackButton.setSelection(true);
 		commitPromptText.setText("Generate a concise Conventional Commit message for the following Git diff. "
 				+ "Format: type(scope): description\\n\\n[optional body]");
 		super.performDefaults();

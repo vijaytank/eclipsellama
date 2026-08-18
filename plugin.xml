@@ -89,6 +89,21 @@
       name="Generate Commit Message"
       description="Generate AI commit message from git diff"
       categoryId="com.eclipsellama.plugin.category"/>
+    <command
+      id="com.eclipsellama.plugin.command.refactorCode"
+      name="Refactor Code"
+      description="Refactor selected code with AI"
+      categoryId="com.eclipsellama.plugin.category"/>
+    <command
+      id="com.eclipsellama.plugin.command.reviewCode"
+      name="Review Code"
+      description="Review selected code with AI"
+      categoryId="com.eclipsellama.plugin.category"/>
+    <command
+      id="com.eclipsellama.plugin.command.convertCode"
+      name="Convert Code"
+      description="Convert selected code with AI"
+      categoryId="com.eclipsellama.plugin.category"/>
 
     <!-- NEW COMMAND: Open MCP -->
     <command
@@ -118,6 +133,15 @@
     <handler
       commandId="com.eclipsellama.plugin.command.generateCommit"
       class="com.eclipsellama.plugin.handlers.GenerateCommitHandler"/>
+    <handler
+      commandId="com.eclipsellama.plugin.command.refactorCode"
+      class="com.eclipsellama.plugin.handlers.RefactorCodeHandler"/>
+    <handler
+      commandId="com.eclipsellama.plugin.command.reviewCode"
+      class="com.eclipsellama.plugin.handlers.ReviewCodeHandler"/>
+    <handler
+      commandId="com.eclipsellama.plugin.command.convertCode"
+      class="com.eclipsellama.plugin.handlers.ConvertCodeHandler"/>
 
     <!-- NEW HANDLER: Open MCP -->
     <handler
@@ -156,6 +180,18 @@
         <command
           commandId="com.eclipsellama.plugin.command.documentCode"
           label="Add Documentation"
+          style="push"/>
+        <command
+          commandId="com.eclipsellama.plugin.command.refactorCode"
+          label="Refactor This Code"
+          style="push"/>
+        <command
+          commandId="com.eclipsellama.plugin.command.reviewCode"
+          label="Review This Code"
+          style="push"/>
+        <command
+          commandId="com.eclipsellama.plugin.command.convertCode"
+          label="Convert This Code"
           style="push"/>
         <separator name="separator1"/>
         <command

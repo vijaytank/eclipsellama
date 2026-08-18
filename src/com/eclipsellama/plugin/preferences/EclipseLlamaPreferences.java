@@ -25,6 +25,12 @@ public final class EclipseLlamaPreferences {
 	private static final String KEY_API_KEY = "api.key";
 	private static final String KEY_TIMEOUT_SECONDS = "eclipsellama.timeout.seconds";
 	private static final String KEY_RETRY_ATTEMPTS = "eclipsellama.retry.attempts";
+	private static final String KEY_SEARCH_PROVIDER = "search.provider";
+	private static final String KEY_SEARCH_MAX_RESULTS = "search.maxResults";
+	private static final String KEY_SEARCH_API_KEY = "search.apiKey";
+	private static final String KEY_SEARCH_SEARXNG_ENDPOINT = "search.searxngEndpoint";
+	private static final String KEY_SEARCH_FALLBACK = "search.fallbackToBuiltin";
+	private static final String KEY_SEARCH_MODE = "search.mode";
 
 	// Defaults
 	private static final String DEFAULT_ENDPOINT = "http://localhost:11434";
@@ -35,6 +41,11 @@ public final class EclipseLlamaPreferences {
 	private static final int MAX_TIMEOUT_SECONDS = 300;
 	private static final int MIN_RETRY_ATTEMPTS = 1;
 	private static final int MAX_RETRY_ATTEMPTS = 5;
+	private static final String DEFAULT_SEARCH_PROVIDER = "builtin";
+	private static final int DEFAULT_SEARCH_MAX_RESULTS = 5;
+	private static final boolean DEFAULT_SEARCH_FALLBACK_TO_BUILTIN = true;
+	private static final String DEFAULT_SEARCH_MODE = "smart";
+	private static final String DEFAULT_SEARXNG_ENDPOINT = "";
 	private static final String DEFAULT_COMMIT_PROMPT = "Generate a concise Conventional Commit message for the following Git diff. "
 			+ "Format: type(scope): description\\n\\n[optional body]";
 
@@ -81,6 +92,12 @@ public final class EclipseLlamaPreferences {
 		properties.setProperty(KEY_API_KEY, "");
 		properties.setProperty(KEY_TIMEOUT_SECONDS, String.valueOf(DEFAULT_TIMEOUT_SECONDS));
 		properties.setProperty(KEY_RETRY_ATTEMPTS, String.valueOf(DEFAULT_RETRY_ATTEMPTS));
+		properties.setProperty(KEY_SEARCH_PROVIDER, DEFAULT_SEARCH_PROVIDER);
+		properties.setProperty(KEY_SEARCH_MAX_RESULTS, String.valueOf(DEFAULT_SEARCH_MAX_RESULTS));
+		properties.setProperty(KEY_SEARCH_API_KEY, "");
+		properties.setProperty(KEY_SEARCH_SEARXNG_ENDPOINT, DEFAULT_SEARXNG_ENDPOINT);
+		properties.setProperty(KEY_SEARCH_FALLBACK, String.valueOf(DEFAULT_SEARCH_FALLBACK_TO_BUILTIN));
+		properties.setProperty(KEY_SEARCH_MODE, DEFAULT_SEARCH_MODE);
 
 		// Load from file if exists
 		Path configFile = getConfigFile();
@@ -259,6 +276,110 @@ public final class EclipseLlamaPreferences {
 
 	private static int clamp(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
+	}
+
+	/**
+	 * Get the selected web search provider id (duckduckgo, searxng, brave).
+	 */
+	public static String getSearchProvider() {
+		load();
+		return properties.getProperty(KEY_SEARCH_PROVIDER, DEFAULT_SEARCH_PROVIDER);
+	}
+
+	/**
+	 * Set the selected web search provider id.
+	 */
+	public static void setSearchProvider(String provider) {
+		load();
+		properties.setProperty(KEY_SEARCH_PROVIDER,
+				(provider == null || provider.isBlank()) ? DEFAULT_SEARCH_PROVIDER : provider.trim());
+	}
+
+	/**
+	 * Get the max number of search results to use, clamped to 1-10.
+	 */
+	public static int getSearchMaxResults() {
+		load();
+		return clamp(
+				parseInt(properties.getProperty(KEY_SEARCH_MAX_RESULTS, String.valueOf(DEFAULT_SEARCH_MAX_RESULTS)),
+						DEFAULT_SEARCH_MAX_RESULTS),
+				1, 10);
+	}
+
+	/**
+	 * Set the max number of search results (clamped to 1-10).
+	 */
+	public static void setSearchMaxResults(int max) {
+		load();
+		properties.setProperty(KEY_SEARCH_MAX_RESULTS, String.valueOf(clamp(max, 1, 10)));
+	}
+
+	/**
+	 * Get the web search API key (Brave, etc.).
+	 */
+	public static String getSearchApiKey() {
+		load();
+		return properties.getProperty(KEY_SEARCH_API_KEY, "");
+	}
+
+	/**
+	 * Set the web search API key.
+	 */
+	public static void setSearchApiKey(String key) {
+		load();
+		properties.setProperty(KEY_SEARCH_API_KEY, (key == null || key.isBlank()) ? "" : key.trim());
+	}
+
+	/**
+	 * Get the SearXNG instance endpoint URL.
+	 */
+	public static String getSearchSearxngEndpoint() {
+		load();
+		return properties.getProperty(KEY_SEARCH_SEARXNG_ENDPOINT, "");
+	}
+
+	/**
+	 * Set the SearXNG instance endpoint URL.
+	 */
+	public static void setSearchSearxngEndpoint(String endpoint) {
+		load();
+		properties.setProperty(KEY_SEARCH_SEARXNG_ENDPOINT,
+				(endpoint == null || endpoint.isBlank()) ? "" : endpoint.trim());
+	}
+
+	/**
+	 * Whether to fall back to the built-in provider when the selected provider is
+	 * unavailable or returns no results.
+	 */
+	public static boolean getSearchFallbackToBuiltin() {
+		load();
+		return Boolean.parseBoolean(
+				properties.getProperty(KEY_SEARCH_FALLBACK, String.valueOf(DEFAULT_SEARCH_FALLBACK_TO_BUILTIN)));
+	}
+
+	/**
+	 * Set whether to fall back to the built-in provider.
+	 */
+	public static void setSearchFallbackToBuiltin(boolean enabled) {
+		load();
+		properties.setProperty(KEY_SEARCH_FALLBACK, String.valueOf(enabled));
+	}
+
+	/**
+	 * Get the web search mode: off, smart, ask, or always.
+	 */
+	public static String getSearchMode() {
+		load();
+		return properties.getProperty(KEY_SEARCH_MODE, DEFAULT_SEARCH_MODE);
+	}
+
+	/**
+	 * Set the web search mode (off, smart, ask, always).
+	 */
+	public static void setSearchMode(String mode) {
+		load();
+		String normalized = (mode == null || mode.isBlank()) ? DEFAULT_SEARCH_MODE : mode.trim().toLowerCase();
+		properties.setProperty(KEY_SEARCH_MODE, normalized);
 	}
 
 	/**

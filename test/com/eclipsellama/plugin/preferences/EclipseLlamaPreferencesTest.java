@@ -55,4 +55,35 @@ public class EclipseLlamaPreferencesTest {
 		EclipseLlamaPreferences.setRetryAttempts(99);
 		assertEquals(5, EclipseLlamaPreferences.getRetryAttempts());
 	}
+
+	@Test
+	public void testDefaultSearchProviderIsBuiltin() {
+		assertEquals("builtin", EclipseLlamaPreferences.getSearchProvider());
+	}
+
+	@Test
+	public void testDefaultSearchFallbackIsEnabled() {
+		assertEquals(true, EclipseLlamaPreferences.getSearchFallbackToBuiltin());
+	}
+
+	@Test
+	public void testSearchFallbackRoundTrip() {
+		EclipseLlamaPreferences.setSearchFallbackToBuiltin(false);
+		assertEquals(false, EclipseLlamaPreferences.getSearchFallbackToBuiltin());
+		EclipseLlamaPreferences.setSearchFallbackToBuiltin(true);
+		assertEquals(true, EclipseLlamaPreferences.getSearchFallbackToBuiltin());
+	}
+
+	@Test
+	public void testSearxngEndpointDefaultsToBlank() {
+		assertEquals("", EclipseLlamaPreferences.getSearchSearxngEndpoint());
+	}
+
+	@Test
+	public void testSearchMaxResultsClamped() {
+		EclipseLlamaPreferences.setSearchMaxResults(99);
+		assertEquals(10, EclipseLlamaPreferences.getSearchMaxResults());
+		EclipseLlamaPreferences.setSearchMaxResults(0);
+		assertEquals(1, EclipseLlamaPreferences.getSearchMaxResults());
+	}
 }

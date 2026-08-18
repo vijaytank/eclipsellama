@@ -18,6 +18,21 @@ import org.json.JSONObject;
 public class DuckDuckGoSearchProvider implements WebSearchProvider {
 
 	@Override
+	public String getId() {
+		return "duckduckgo";
+	}
+
+	@Override
+	public String getDisplayName() {
+		return "DuckDuckGo (legacy)";
+	}
+
+	@Override
+	public boolean isConfigured() {
+		return true;
+	}
+
+	@Override
 	public List<SearchResult> search(String query) {
 		if (query == null || query.isBlank()) {
 			return Collections.emptyList();
@@ -26,8 +41,8 @@ public class DuckDuckGoSearchProvider implements WebSearchProvider {
 			String encoded = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
 			String url = "https://api.duckduckgo.com/?q=" + encoded + "&format=json&no_html=1";
 			HttpRequest req = HttpRequest.newBuilder(java.net.URI.create(url)).GET().build();
-			HttpResponse<String> resp = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
-					.build().send(req, HttpResponse.BodyHandlers.ofString());
+			HttpResponse<String> resp = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
+					.send(req, HttpResponse.BodyHandlers.ofString());
 			if (resp.statusCode() != 200) {
 				return Collections.emptyList();
 			}
@@ -43,8 +58,8 @@ public class DuckDuckGoSearchProvider implements WebSearchProvider {
 			JSONObject json = new JSONObject(body);
 			// Abstract / instant answer
 			if (json.has("AbstractText") && !json.optString("AbstractText").isEmpty()) {
-				results.add(new SearchResult(json.optString("Heading", "Result"),
-						json.optString("AbstractURL", ""), json.optString("AbstractText", "")));
+				results.add(new SearchResult(json.optString("Heading", "Result"), json.optString("AbstractURL", ""),
+						json.optString("AbstractText", "")));
 			}
 			// Related topics
 			JSONArray topics = json.optJSONArray("RelatedTopics");

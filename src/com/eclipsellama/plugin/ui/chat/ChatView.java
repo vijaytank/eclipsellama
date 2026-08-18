@@ -23,9 +23,12 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
+import com.eclipsellama.plugin.context.CodeContextCollector;
 import com.eclipsellama.plugin.core.ChatMessage;
 import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
+import com.eclipsellama.plugin.search.WebSearchService;
+import com.eclipsellama.plugin.ui.CodeDiffDialog;
 
 /**
  * Modern chat view for EclipseLlama. Features: message bubbles, markdown
@@ -51,9 +54,18 @@ public class ChatView extends ViewPart {
 	private boolean webSearchEnabled = false;
 	private StringBuilder currentResponse;
 	private StyledText currentAssistantBubble;
+	// Track last action and context for diff and context-aware prompts
+	private String lastAction = "";
+	private String lastContext = "";
 
 	// Web search
-	private com.eclipsellama.plugin.search.WebSearchProvider webSearchProvider = new com.eclipsellama.plugin.search.DuckDuckGoSearchProvider();
+	private WebSearchService webSearchService = createWebSearchService();
+	private Combo searchModeCombo;
+	private Composite searchResultsPanel;
+	private StyledText searchResultsText;
+
+	// Persistence
+	private final com.eclipsellama.plugin.storage.ChatHistoryStore historyStore = new com.eclipsellama.plugin.storage.ChatHistoryStore();
 
 	// Styling
 	private ChatStyles styles;
@@ -73,11 +85,14 @@ public class ChatView extends ViewPart {
 
 		addSystemMessage();
 		refreshModels();
+		loadHistory();
+		webSearchEnabled = !"off".equals(EclipseLlamaPreferences.getSearchMode());
+		updateSearchModeCombo();
 	}
 
 	private void createToolbar(Composite parent) {
 		Composite toolbar = new Composite(parent, SWT.NONE);
-		toolbar.setLayout(new GridLayout(6, false));
+		toolbar.setLayout(new GridLayout(7, false));
 		toolbar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
 		// Model selector
@@ -106,12 +121,20 @@ public class ChatView extends ViewPart {
 		clearBtn.setToolTipText("Clear conversation");
 		clearBtn.addListener(SWT.Selection, e -> clearConversation());
 
-		// Web Search toggle
-		Button webSearchBtn = new Button(toolbar, SWT.TOGGLE);
-		webSearchBtn.setText("🌐 Web Search");
-		webSearchBtn.setToolTipText("Search the web and inject results as context before sending");
-		webSearchBtn.setSelection(webSearchEnabled);
-		webSearchBtn.addListener(SWT.Selection, e -> webSearchEnabled = webSearchBtn.getSelection());
+		// Web Search mode selector
+		Label searchModeLabel = new Label(toolbar, SWT.NONE);
+		searchModeLabel.setText("🌐 Search:");
+
+		searchModeCombo = new Combo(toolbar, SWT.DROP_DOWN | SWT.READ_ONLY);
+		searchModeCombo.setItems(new String[] { "Off", "Smart", "Ask", "Always" });
+		searchModeCombo.setToolTipText(
+				"Off: no search. Smart: model decides. Ask: confirm before search. Always: search every message.");
+		searchModeCombo.addListener(SWT.Selection, e -> {
+			String mode = mapModeLabelToKey(searchModeCombo.getText());
+			EclipseLlamaPreferences.setSearchMode(mode);
+			EclipseLlamaPreferences.save();
+			webSearchEnabled = !"off".equals(mode);
+		});
 
 		// Settings button
 		Button settingsBtn = new Button(toolbar, SWT.PUSH);
@@ -136,8 +159,36 @@ public class ChatView extends ViewPart {
 
 		scrolledComposite.setContent(messagesContainer);
 
+		createSearchResultsPanel(parent);
 		// Welcome message
 		addWelcomeMessage();
+	}
+
+	/**
+	 * Collapsible panel that shows the last web search results (title, URL,
+	 * snippet) above the chat output.
+	 */
+	private void createSearchResultsPanel(Composite parent) {
+		Button toggle = new Button(parent, SWT.CHECK);
+		toggle.setText("Show web search results");
+		toggle.setSelection(false);
+		toggle.addListener(SWT.Selection, e -> {
+			if (searchResultsPanel != null && !searchResultsPanel.isDisposed()) {
+				searchResultsPanel.setVisible(toggle.getSelection());
+				parent.layout(true, true);
+			}
+		});
+
+		searchResultsPanel = new Composite(parent, SWT.BORDER);
+		searchResultsPanel.setLayout(new GridLayout(1, false));
+		searchResultsPanel.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+		searchResultsPanel.setVisible(false);
+
+		searchResultsText = new StyledText(searchResultsPanel, SWT.WRAP | SWT.READ_ONLY | SWT.V_SCROLL);
+		GridData textData = new GridData(SWT.FILL, SWT.FILL, true, true);
+		textData.heightHint = 120;
+		searchResultsText.setLayoutData(textData);
+		searchResultsText.setWordWrap(true);
 	}
 
 	private void addWelcomeMessage() {
@@ -231,6 +282,25 @@ public class ChatView extends ViewPart {
 		conversation.add(ChatMessage.system(systemPrompt));
 	}
 
+	/**
+	 * Restores a previously persisted conversation into the chat area.
+	 */
+	private void loadHistory() {
+		java.util.List<ChatMessage> saved = historyStore.load();
+		for (ChatMessage m : saved) {
+			conversation.add(m);
+			if (m.isUser()) {
+				addMessageBubble("👤 You", m.getContent(), true);
+			} else if (m.isAssistant()) {
+				addMessageBubble("🦙 EclipseLlama", m.getContent(), false);
+			}
+		}
+		if (!saved.isEmpty()) {
+			messagesContainer.layout(true, true);
+			scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+		}
+	}
+
 	private void refreshModels() {
 		statusLabel.setText("Loading models...");
 		modelCombo.removeAll();
@@ -277,8 +347,9 @@ public class ChatView extends ViewPart {
 		conversation.add(userMsg);
 		addMessageBubble("👤 You", input, true);
 
-		// Optionally enrich the outgoing prompt with web search results.
-		if (webSearchEnabled) {
+		// Enrich with web search only when the selected mode warrants it. The model
+		// decides in Smart mode; Ask requires user confirmation; Off never searches.
+		if (shouldSearch(input)) {
 			enrichWithWebSearch();
 		}
 
@@ -306,9 +377,95 @@ public class ChatView extends ViewPart {
 	}
 
 	/**
-	 * Runs a web search for the last user message and prepends the results as
-	 * context so the LLM can ground its answer. Search failures are non-fatal: the
-	 * message is sent unchanged.
+	 * Builds the web search service (registry + built-in default) from preferences.
+	 * External providers are only used when configured.
+	 */
+	private WebSearchService createWebSearchService() {
+		int max = EclipseLlamaPreferences.getSearchMaxResults();
+		java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+				.followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
+		var searxng = new com.eclipsellama.plugin.search.SearXNGSearchProvider(
+				EclipseLlamaPreferences.getSearchSearxngEndpoint(), max, http);
+		var brave = new com.eclipsellama.plugin.search.BraveSearchProvider(EclipseLlamaPreferences.getSearchApiKey(),
+				max, http);
+		var builtin = new com.eclipsellama.plugin.search.BuiltInSearchProvider(max, http,
+				new com.eclipsellama.plugin.search.parser.DuckDuckGoHtmlParser());
+		var registry = new com.eclipsellama.plugin.search.SearchProviderRegistry(
+				java.util.List.of(builtin, searxng, brave));
+		return new WebSearchService(registry);
+	}
+
+	/**
+	 * Whether the current message should trigger a web search, based on the
+	 * selected mode. Off never searches; Always searches everything; Smart uses the
+	 * LLM router; Ask uses the router and then requires user confirmation.
+	 */
+	private boolean shouldSearch(String message) {
+		String mode = EclipseLlamaPreferences.getSearchMode();
+		if ("off".equals(mode)) {
+			return false;
+		}
+		if ("always".equals(mode)) {
+			return true;
+		}
+		// smart or ask: ask the model whether search is warranted.
+		String model = modelCombo.getText();
+		if (model.isEmpty()) {
+			model = EclipseLlamaPreferences.getModel();
+		}
+		com.eclipsellama.plugin.search.WebSearchRouter.SearchDecision decision = new com.eclipsellama.plugin.search.WebSearchRouter(
+				ClientProvider.getClient()).decide(message, model);
+		if (!decision.isSearch()) {
+			return false;
+		}
+		if ("ask".equals(mode)) {
+			return confirmSearch(decision.getQuery());
+		}
+		return true;
+	}
+
+	private boolean confirmSearch(String query) {
+		String[] labels = { "Search", "Answer without web" };
+		org.eclipse.swt.widgets.MessageBox box = new org.eclipse.swt.widgets.MessageBox(
+				Display.getDefault().getActiveShell(), SWT.ICON_QUESTION | SWT.YES | SWT.NO);
+		box.setText("Web search");
+		box.setMessage("The assistant wants to search the web:\n\nQuery: " + query
+				+ "\n\n[Yes] Search  [No] Answer without web");
+		return box.open() == SWT.YES;
+	}
+
+	private void updateSearchModeCombo() {
+		if (searchModeCombo == null || searchModeCombo.isDisposed()) {
+			return;
+		}
+		String mode = EclipseLlamaPreferences.getSearchMode();
+		searchModeCombo.select(indexOfMode(mode));
+	}
+
+	private static String mapModeLabelToKey(String label) {
+		return switch (label) {
+		case "Off" -> "off";
+		case "Smart" -> "smart";
+		case "Ask" -> "ask";
+		case "Always" -> "always";
+		default -> "smart";
+		};
+	}
+
+	private static int indexOfMode(String mode) {
+		return switch (mode) {
+		case "off" -> 0;
+		case "smart" -> 1;
+		case "ask" -> 2;
+		case "always" -> 3;
+		default -> 1;
+		};
+	}
+
+	/**
+	 * Runs a web search for the last user message and injects the results as a
+	 * safe, delimited pre-prompt. Search failures are non-fatal: the message is
+	 * sent unchanged.
 	 */
 	private void enrichWithWebSearch() {
 		String query = lastUserMessageContent();
@@ -316,30 +473,29 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		statusLabel.setText("🌐 Searching the web...");
-		java.util.List<com.eclipsellama.plugin.search.SearchResult> results = webSearchProvider.search(query);
-		StringBuilder ctx = new StringBuilder();
-		ctx.append("Web search results for \"").append(query).append("\":\n");
-		if (results == null || results.isEmpty()) {
-			ctx.append("(no results)");
-		} else {
-			int i = 1;
-			for (com.eclipsellama.plugin.search.SearchResult r : results) {
-				ctx.append(i++).append(". ");
-				if (r.getTitle() != null && !r.getTitle().isEmpty()) {
-					ctx.append(r.getTitle()).append(" - ");
-				}
-				if (r.getSnippet() != null && !r.getSnippet().isEmpty()) {
-					ctx.append(r.getSnippet());
-				}
-				if (r.getUrl() != null && !r.getUrl().isEmpty()) {
-					ctx.append(" (").append(r.getUrl()).append(")");
-				}
-				ctx.append('\n');
-			}
-		}
-		ctx.append("\nAnswer the user using the web search results above where relevant.\n");
-		prependToLastUserMessage(ctx.toString());
+		java.util.List<com.eclipsellama.plugin.search.SearchResult> results = webSearchService.search(query);
+		String prompt = webSearchService.buildPrompt(query, results);
+		prependToLastUserMessage(prompt);
+		renderSearchResults(query, results);
 		statusLabel.setText("");
+	}
+
+	/**
+	 * Renders the given results into the collapsible search-results panel.
+	 */
+	private void renderSearchResults(String query,
+			java.util.List<com.eclipsellama.plugin.search.SearchResult> results) {
+		if (searchResultsText == null || searchResultsText.isDisposed()) {
+			return;
+		}
+		StringBuilder sb = new StringBuilder("Results for \"").append(query).append("\"\n");
+		int i = 1;
+		for (com.eclipsellama.plugin.search.SearchResult r : results) {
+			sb.append(i++).append(". ").append(r.getTitle() == null ? "" : r.getTitle()).append('\n')
+					.append(r.getUrl() == null ? "" : r.getUrl()).append('\n')
+					.append(r.getSnippet() == null ? "" : r.getSnippet()).append("\n\n");
+		}
+		searchResultsText.setText(sb.toString());
 	}
 
 	private String lastUserMessageContent() {
@@ -515,6 +671,7 @@ public class ChatView extends ViewPart {
 	private void onComplete(String fullResponse) {
 		isStreaming = false;
 		conversation.add(ChatMessage.assistant(currentResponse.toString()));
+		historyStore.save(conversation);
 
 		Display.getDefault().asyncExec(() -> {
 			sendButton.setEnabled(true);
@@ -531,6 +688,12 @@ public class ChatView extends ViewPart {
 					addCopyButton(parent, currentResponse.toString(), styles.getAssistantBubbleBackground());
 					parent.layout(true, true);
 				}
+			}
+
+			// Show diff dialog for fix actions
+			if ("fix".equals(lastAction) && lastContext != null && !lastContext.isEmpty()) {
+				// Show the diff between original and fixed code
+				CodeDiffDialog.show("Code Fix Suggestion", lastContext, currentResponse.toString());
 			}
 
 			messagesContainer.layout(true, true);
@@ -560,33 +723,12 @@ public class ChatView extends ViewPart {
 
 		conversation.clear();
 		addSystemMessage();
+		historyStore.save(conversation);
 		addWelcomeMessage();
 
 		messagesContainer.layout(true, true);
 		scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 		statusLabel.setText("Conversation cleared");
-	}
-
-	/**
-	 * Add context (selected code) to the next message.
-	 */
-	public void setContext(String context, String action) {
-		String prompt = switch (action) {
-		case "explain" -> "Explain this code:\n```\n" + context + "\n```";
-		case "fix" -> "Find and fix any issues in this code:\n```\n" + context + "\n```";
-		case "test" -> "Generate unit tests for this code:\n```\n" + context + "\n```";
-		case "document" -> "Generate Javadoc documentation for this code:\n```\n" + context + "\n```";
-		default -> context;
-		};
-		inputField.setText(prompt);
-		inputField.setFocus();
-
-		// Auto-send after a small delay to ensure UI is ready
-		Display.getDefault().asyncExec(() -> {
-			if (!inputField.isDisposed()) {
-				sendMessage();
-			}
-		});
 	}
 
 	@Override
@@ -598,5 +740,65 @@ public class ChatView extends ViewPart {
 	public void dispose() {
 		// Note: ChatStyles is a singleton, don't dispose here
 		super.dispose();
+	}
+
+	/**
+	 * Add context (selected code) to the next message. Now includes structural
+	 * context via CodeContextCollector.
+	 */
+	public void setContext(String context, String action) {
+		// Store last action and context for diff and context-aware prompts
+		this.lastAction = action;
+		this.lastContext = context;
+
+		// Build context-aware prompt
+		String contextPrompt = buildContextAwarePrompt(context, action);
+		inputField.setText(contextPrompt);
+		inputField.setFocus();
+
+		// Auto-send after a small delay to ensure UI is ready
+		Display.getDefault().asyncExec(() -> {
+			if (!inputField.isDisposed()) {
+				sendMessage();
+			}
+		});
+	}
+
+	/**
+	 * Builds a context-aware prompt using the CodeContextCollector.
+	 *
+	 * @param selectedCode the code selected by the user
+	 * @param action       the action (explain, fix, etc.)
+	 * @return the prompt to send to the LLM
+	 */
+	private String buildContextAwarePrompt(String selectedCode, String action) {
+		if (selectedCode == null || selectedCode.isBlank()) {
+			return selectedCode;
+		}
+
+		// Extract structural context
+		CodeContextCollector.Context ctx = CodeContextCollector.collect(selectedCode);
+		StringBuilder prompt = new StringBuilder();
+
+		String prefix = ctx.toPromptPrefix();
+		if (!prefix.isBlank()) {
+			prompt.append(prefix).append("\n---\n");
+		}
+
+		// Action-specific instruction
+		String instruction = switch (action) {
+		case "explain" -> "Explain this code:";
+		case "fix" -> "Find and fix any issues in this code:";
+		case "test" -> "Generate unit tests for this code:";
+		case "document" -> "Generate Javadoc documentation for this code:";
+		case "refactor" -> "Refactor this code for clarity and maintainability:";
+		case "review" -> "Review this code and list issues, risks, and suggestions:";
+		case "convert" -> "Convert this code to a different language/format:";
+		default -> selectedCode; // fallback
+		};
+
+		prompt.append(instruction).append("\n```\n").append(selectedCode).append("\n```");
+
+		return prompt.toString();
 	}
 }

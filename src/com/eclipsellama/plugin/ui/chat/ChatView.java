@@ -106,7 +106,6 @@ public class ChatView extends ViewPart {
 
 		createToolbar(parent);
 		createChatArea(parent);
-		createQuickActionsBar(parent);
 		createInputArea(parent);
 
 		addSystemMessage();
@@ -309,43 +308,6 @@ public class ChatView extends ViewPart {
 		inputField.setSelection(prefix.length());
 	}
 
-	/**
-	 * Quick action bar above the input box for one-click prompts.
-	 */
-	private void createQuickActionsBar(Composite parent) {
-		Composite bar = new Composite(parent, SWT.NONE);
-		GridLayout layout = new GridLayout(6, false);
-		layout.marginWidth = 4;
-		layout.marginHeight = 2;
-		layout.horizontalSpacing = 4;
-		bar.setLayout(layout);
-		bar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-
-		Label label = new Label(bar, SWT.NONE);
-		label.setText("Quick Actions:");
-		label.setFont(styles.getSmallFont());
-		label.setForeground(styles.getTimestampColor());
-
-		createMiniActionButton(bar, "⚡ Explain", "Explain selected code",
-				() -> triggerQuickPrompt("Explain this code:\n"));
-		createMiniActionButton(bar, "🛠️ Fix", "Suggest fixes and show diff",
-				() -> triggerQuickPrompt("Find and fix any issues in this code:\n"));
-		createMiniActionButton(bar, "🧪 Test", "Generate JUnit tests",
-				() -> triggerQuickPrompt("Generate unit tests for this code:\n"));
-		createMiniActionButton(bar, "📝 Doc", "Generate Javadoc",
-				() -> triggerQuickPrompt("Generate documentation for this code:\n"));
-		createMiniActionButton(bar, "🔄 Refactor", "Refactor for clarity and maintainability",
-				() -> triggerQuickPrompt("Refactor this code:\n"));
-	}
-
-	private void createMiniActionButton(Composite parent, String text, String tooltip, Runnable action) {
-		Button btn = new Button(parent, SWT.PUSH | SWT.FLAT);
-		btn.setText(text);
-		btn.setToolTipText(tooltip);
-		btn.setFont(styles.getSmallFont());
-		btn.addListener(SWT.Selection, e -> action.run());
-	}
-
 	private void createInputArea(Composite parent) {
 		Composite inputArea = new Composite(parent, SWT.NONE);
 		GridLayout inputLayout = new GridLayout(2, false);
@@ -440,7 +402,7 @@ public class ChatView extends ViewPart {
 		}
 		if (!saved.isEmpty()) {
 			messagesContainer.layout(true, true);
-			scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+			refreshMinSize();
 		}
 	}
 
@@ -660,7 +622,7 @@ public class ChatView extends ViewPart {
 			final String q = query;
 			updateStatus("🌐", "Searching the web (" + q + ")...");
 
-			WebSearchService service = createWebSearchService();
+			WebSearchService service = webSearchService;
 			List<SearchResult> results = service.search(q);
 			String prompt = service.buildPrompt(input, results);
 
@@ -835,7 +797,7 @@ public class ChatView extends ViewPart {
 		}
 
 		messagesContainer.layout(true, true);
-		scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+		refreshMinSize();
 		scrollToBottom();
 
 		return messageText;
@@ -962,6 +924,20 @@ public class ChatView extends ViewPart {
 		}
 	}
 
+	/**
+	 * Recalculates the scroll range using the actual viewport width so that
+	 * word-wrapped text is measured correctly. Must be called on the UI thread.
+	 */
+	private void refreshMinSize() {
+		int width = scrolledComposite.getClientArea().width;
+		if (width > 0) {
+			messagesContainer.setSize(width, messagesContainer.computeSize(width, SWT.DEFAULT).y);
+			scrolledComposite.setMinSize(messagesContainer.computeSize(width, SWT.DEFAULT));
+		} else {
+			scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+		}
+	}
+
 	private void scrollToBottom() {
 		Display display = Display.getDefault();
 		if (display == null || display.isDisposed()) {
@@ -969,7 +945,7 @@ public class ChatView extends ViewPart {
 		}
 		display.asyncExec(() -> {
 			if (scrolledComposite != null && !scrolledComposite.isDisposed()) {
-				scrolledComposite.setOrigin(0, messagesContainer.getSize().y);
+				scrolledComposite.setOrigin(0, scrolledComposite.getMinHeight());
 			}
 		});
 	}
@@ -1005,7 +981,7 @@ public class ChatView extends ViewPart {
 			if (currentAssistantBubble != null && !currentAssistantBubble.isDisposed()) {
 				currentAssistantBubble.append(chunk);
 				messagesContainer.layout(true, true);
-				scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+				refreshMinSize();
 				scrollToBottom();
 			}
 		});
@@ -1051,7 +1027,8 @@ public class ChatView extends ViewPart {
 
 			if (messagesContainer != null && !messagesContainer.isDisposed()) {
 				messagesContainer.layout(true, true);
-				scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+				refreshMinSize();
+				scrollToBottom();
 			}
 		});
 	}
@@ -1089,7 +1066,7 @@ public class ChatView extends ViewPart {
 		addWelcomeMessage();
 
 		messagesContainer.layout(true, true);
-		scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+		refreshMinSize();
 		updateStatus("🟢", "Conversation cleared");
 	}
 

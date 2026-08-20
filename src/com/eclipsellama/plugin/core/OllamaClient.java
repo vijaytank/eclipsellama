@@ -32,11 +32,16 @@ public class OllamaClient implements LLMClient {
 	}
 
 	private int getConnectTimeoutMs() {
-		return EclipseLlamaPreferences.getTimeoutSeconds() * 1000;
+		return 10000; // 10s connect timeout
 	}
 
 	private int getReadTimeoutMs() {
-		return EclipseLlamaPreferences.getTimeoutSeconds() * 1000;
+		int configured = EclipseLlamaPreferences.getTimeoutSeconds();
+		return Math.max(60000, configured * 1000); // at least 60s for model inference / loading
+	}
+
+	private int getQuickReadTimeoutMs() {
+		return 10000; // 10s for metadata & reachability checks
 	}
 
 	private RetryPolicy retryPolicy() {
@@ -50,7 +55,7 @@ public class OllamaClient implements LLMClient {
 			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 			conn.setRequestMethod("GET");
 			conn.setConnectTimeout(getConnectTimeoutMs());
-			conn.setReadTimeout(getReadTimeoutMs());
+			conn.setReadTimeout(getQuickReadTimeoutMs());
 			try {
 				conn.connect();
 				return conn.getResponseCode() == 200;
@@ -198,7 +203,7 @@ public class OllamaClient implements LLMClient {
 		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 		conn.setRequestMethod("GET");
 		conn.setConnectTimeout(getConnectTimeoutMs());
-		conn.setReadTimeout(getReadTimeoutMs());
+		conn.setReadTimeout(getQuickReadTimeoutMs());
 		try {
 			conn.connect();
 			if (conn.getResponseCode() != 200) {
@@ -234,6 +239,9 @@ public class OllamaClient implements LLMClient {
 	}
 
 	private String readResponse(InputStream stream) throws IOException {
+		if (stream == null) {
+			return "";
+		}
 		StringBuilder response = new StringBuilder();
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
 			char[] buffer = new char[8192];

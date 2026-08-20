@@ -25,6 +25,14 @@ public class EclipseLlamaActivator extends AbstractUIPlugin {
 
 	@Override
 	public void stop(BundleContext context) throws Exception {
+		try {
+			com.eclipsellama.plugin.mcp.McpConnectionManager.getInstance().closeAll();
+		} catch (Throwable ignored) {
+		}
+		try {
+			com.eclipsellama.plugin.ui.chat.ChatStyles.disposeInstance();
+		} catch (Throwable ignored) {
+		}
 		plugin = null;
 		super.stop(context);
 		System.out.println("EclipseLlama: Plugin stopped");

@@ -11,6 +11,12 @@ public class McpServerConfig implements Serializable {
 	private String id = UUID.randomUUID().toString();
 
 	/**
+	 * Human-readable name for the MCP server (e.g. "nakshastramcp" or
+	 * "Filesystem").
+	 */
+	private String name;
+
+	/**
 	 * Transport mode for the MCP server. Valid values are {@code "stdio"} and
 	 * {@code "sse"} and {@code "http-streamable"}.
 	 */
@@ -40,10 +46,9 @@ public class McpServerConfig implements Serializable {
 	private String arguments;
 
 	/**
-	 * Names of tools advertised by the server, populated by a live
-	 * {@code tools/list} query. Transient: not persisted, fetched on connection.
+	 * Names of tools advertised by the server. Persisted in preferences.
 	 */
-	private transient java.util.List<String> tools = new java.util.ArrayList<>();
+	private java.util.List<String> tools = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a new configuration object with default values.
@@ -56,6 +61,30 @@ public class McpServerConfig implements Serializable {
 	 */
 	public String getId() {
 		return id;
+	}
+
+	/**
+	 * @param id the identifier to set; if blank/null the existing (or a new
+	 *           generated) id is kept.
+	 */
+	public void setId(String id) {
+		if (id != null && !id.isBlank()) {
+			this.id = id;
+		}
+	}
+
+	/**
+	 * @return the human-readable server name.
+	 */
+	public String getName() {
+		return name;
+	}
+
+	/**
+	 * @param name the human-readable server name to set.
+	 */
+	public void setName(String name) {
+		this.name = (name == null || name.isBlank()) ? null : name.trim();
 	}
 
 	/**

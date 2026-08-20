@@ -15,6 +15,14 @@ public class McpConnectionManager {
 
 	private final ConcurrentMap<String, McpConnection> connections = new ConcurrentHashMap<>();
 
+	/**
+	 * Protected constructor allows subclasses and test doubles to be created
+	 * directly with {@code new McpConnectionManager()} while keeping the singleton
+	 * pattern intact for production use via {@link #getInstance()}.
+	 */
+	protected McpConnectionManager() {
+	}
+
 	/** Returns the process-wide shared connection manager. */
 	public static McpConnectionManager getInstance() {
 		return INSTANCE;

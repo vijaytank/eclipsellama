@@ -13,6 +13,7 @@ public class LlmProviderRegistry {
 
 	private static final LlmProviderRegistry INSTANCE = new LlmProviderRegistry();
 	private final Map<String, LlmProvider> providers = new HashMap<>();
+	private String activeProviderName;
 
 	private LlmProviderRegistry() {
 		// Private constructor to enforce Singleton pattern
@@ -54,11 +55,58 @@ public class LlmProviderRegistry {
 	}
 
 	/**
+	 * Unregisters an LlmProvider by name, clearing the active provider if it
+	 * matched.
+	 *
+	 * @param name The name of the provider to unregister.
+	 */
+	public synchronized void unregisterProvider(String name) {
+		if (name != null) {
+			providers.remove(name);
+			if (name.equals(activeProviderName)) {
+				activeProviderName = null;
+			}
+		}
+	}
+
+	/**
 	 * Gets a set of all currently registered provider names.
 	 *
 	 * @return An unmodifiable map view of all registered providers.
 	 */
 	public Map<String, LlmProvider> getAllProviders() {
 		return new HashMap<>(providers);
+	}
+
+	/**
+	 * Sets the currently active provider by name. Falls back to the default
+	 * (first-registered) provider on retrieval if no name has been set.
+	 *
+	 * @param name the name of the provider to make active, or {@code null} to clear
+	 *             the selection.
+	 */
+	public void setActiveProvider(String name) {
+		this.activeProviderName = name;
+	}
+
+	/**
+	 * Resolves the active {@link LlmProvider}. If no explicit active provider was
+	 * set, the first registered provider is used as the default.
+	 *
+	 * @return the active provider, or empty if none are registered.
+	 */
+	public Optional<LlmProvider> getActiveProvider() {
+		if (activeProviderName != null && providers.containsKey(activeProviderName)) {
+			return Optional.of(providers.get(activeProviderName));
+		}
+		return providers.values().stream().findFirst();
+	}
+
+	/**
+	 * @return {@code true} if an explicit active provider has been set via
+	 *         {@link #setActiveProvider(String)}.
+	 */
+	public boolean hasExplicitActiveProvider() {
+		return activeProviderName != null && providers.containsKey(activeProviderName);
 	}
 }

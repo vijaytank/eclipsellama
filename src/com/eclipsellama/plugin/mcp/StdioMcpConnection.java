@@ -8,6 +8,9 @@ import java.io.PrintWriter;
 
 public class StdioMcpConnection implements McpConnection, AutoCloseable {
 
+	/** Shutdown hook thread, held to allow removal if close() is called cleanly. */
+	private final Thread shutdownHook;
+
 	private final Process process;
 	private final BufferedReader reader;
 	private final PrintWriter writer;
@@ -31,6 +34,11 @@ public class StdioMcpConnection implements McpConnection, AutoCloseable {
 
 		// Ensure the writer flushes content immediately
 		this.writer.flush();
+
+		// Register shutdown hook to forcibly kill the subprocess if the JVM exits
+		// abnormally (e.g., Eclipse crash). Prevents orphaned MCP server processes.
+		this.shutdownHook = new Thread(() -> process.destroyForcibly(), "eclipsellama-mcp-shutdown-" + process.pid());
+		Runtime.getRuntime().addShutdownHook(this.shutdownHook);
 	}
 
 	/**
@@ -73,9 +81,22 @@ public class StdioMcpConnection implements McpConnection, AutoCloseable {
 
 	@Override
 	public void close() throws IOException {
-		// Close the underlying process and associated streams
+		// Remove shutdown hook first to prevent it firing redundantly after a clean
+		// close.
+		try {
+			Runtime.getRuntime().removeShutdownHook(this.shutdownHook);
+		} catch (IllegalStateException ignored) {
+			// JVM is already shutting down; hook removal is not possible.
+		}
+		// Close streams before destroying process to flush any pending data.
+		try {
+			writer.close();
+		} catch (Exception ignored) {
+		}
+		try {
+			reader.close();
+		} catch (Exception ignored) {
+		}
 		process.destroy();
-		reader.close();
-		writer.close();
 	}
 }

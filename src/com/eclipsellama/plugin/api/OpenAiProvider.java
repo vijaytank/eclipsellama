@@ -35,6 +35,9 @@ public class OpenAiProvider implements LlmProvider {
 
 	@Override
 	public Stream<String> stream(String prompt, String contextCode) {
+		// TODO(phase-5-streaming): Same limitation as OllamaProvider — returns the
+		// full response as a single Stream element (blocking). OpenAIClient does not
+		// yet expose a streaming callback for this provider layer.
 		return Stream.of(client.generate(prompt, EclipseLlamaPreferences.getModel()));
 	}
 }

@@ -51,8 +51,10 @@ public class RetryPolicy {
 
 				// Calculate backoff delay: delay = initialBackoffMs * 2^(attempt - 1)
 				long delay = initialBackoffMs * (long) Math.pow(2, attempt - 1);
-				System.err.println("RetryPolicy: Attempt " + attempt + " failed. Retrying in " + delay + "ms. Error: "
-						+ e.getMessage());
+				String errMsg = e.getCause() != null ? e.getCause().toString()
+						: (e.getMessage() != null ? e.getMessage() : e.toString());
+				System.err.println(
+						"RetryPolicy: Attempt " + attempt + " failed. Retrying in " + delay + "ms. Reason: " + errMsg);
 
 				try {
 					Thread.sleep(delay);

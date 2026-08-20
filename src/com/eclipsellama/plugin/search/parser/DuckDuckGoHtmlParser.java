@@ -21,6 +21,10 @@ public final class DuckDuckGoHtmlParser {
 	private static final Pattern RESULT_A = Pattern
 			.compile("<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>");
 	private static final Pattern SNIPPET = Pattern.compile("<a[^>]*class=\"result__snippet\"[^>]*>([\\s\\S]*?)</a>");
+	private static final Pattern RESULT_LITE_A = Pattern
+			.compile("<a[^>]*class=\"result-link\"[^>]*href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>");
+	private static final Pattern LITE_SNIPPET = Pattern
+			.compile("<td[^>]*class=\"result-snippet\"[^>]*>([\\s\\S]*?)</td>");
 	private static final Pattern TAG = Pattern.compile("<[^>]+>");
 
 	/**
@@ -41,9 +45,24 @@ public final class DuckDuckGoHtmlParser {
 			if (rawUrl.isEmpty() || !isHttpUrl(rawUrl) || title.isEmpty() || !seen.add(rawUrl)) {
 				continue;
 			}
-			String snippet = findNextSnippet(html, titleMatcher.end());
+			String snippet = findNextSnippet(html, titleMatcher.end(), SNIPPET);
 			results.add(new SearchResult(title, rawUrl, snippet));
 		}
+
+		// Fallback: parse DuckDuckGo Lite layout if standard layout returned no results
+		if (results.isEmpty()) {
+			Matcher liteMatcher = RESULT_LITE_A.matcher(html);
+			while (liteMatcher.find() && results.size() < maxResults) {
+				String rawUrl = decodeDuckDuckGoUrl(unescape(liteMatcher.group(1)));
+				String title = stripTags(unescape(liteMatcher.group(2))).trim();
+				if (rawUrl.isEmpty() || !isHttpUrl(rawUrl) || title.isEmpty() || !seen.add(rawUrl)) {
+					continue;
+				}
+				String snippet = findNextSnippet(html, liteMatcher.end(), LITE_SNIPPET);
+				results.add(new SearchResult(title, rawUrl, snippet));
+			}
+		}
+
 		return results;
 	}
 
@@ -78,8 +97,8 @@ public final class DuckDuckGoHtmlParser {
 		return href;
 	}
 
-	private static String findNextSnippet(String html, int fromIndex) {
-		Matcher m = SNIPPET.matcher(html);
+	private static String findNextSnippet(String html, int fromIndex, Pattern pattern) {
+		Matcher m = pattern.matcher(html);
 		if (m.find(fromIndex)) {
 			return stripTags(unescape(m.group(1))).trim();
 		}

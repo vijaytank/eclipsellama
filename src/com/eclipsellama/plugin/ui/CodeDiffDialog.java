@@ -16,6 +16,7 @@ import org.eclipse.compare.structuremergeviewer.DiffNode;
 import org.eclipse.compare.structuremergeviewer.Differencer;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.widgets.Display;
 
 /**
  * Shows a code change as an inline diff using Eclipse's compare framework. Left
@@ -27,28 +28,46 @@ public final class CodeDiffDialog {
 	}
 
 	/**
-	 * Opens a modal compare dialog for the original vs. fixed code. Must be called
-	 * on the UI thread.
+	 * Opens a modal compare dialog for the original vs. fixed code. Safe to call
+	 * from any thread (automatically dispatches to the SWT UI thread).
 	 *
 	 * @param title    the dialog title.
 	 * @param original the original code.
 	 * @param fixed    the suggested replacement code.
 	 */
 	public static void show(String title, String original, String fixed) {
-		CompareConfiguration config = new CompareConfiguration();
-		config.setLeftLabel("Original");
-		config.setRightLabel("Suggested Fix");
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
 
-		DiffNode root = new DiffNode(Differencer.CHANGE);
-		root.add(new DiffNode(root, Differencer.CHANGE, null, new StringElement("original", original),
-				new StringElement("suggested", fixed)));
+		Runnable openTask = () -> {
+			CompareConfiguration config = new CompareConfiguration();
+			config.setLeftLabel("Original");
+			config.setRightLabel("Suggested Fix");
 
-		CompareUI.openCompareDialog(new CompareEditorInput(config) {
-			@Override
-			protected Object prepareInput(IProgressMonitor monitor) {
-				return root;
+			DiffNode diffNode = new DiffNode(null, Differencer.CHANGE, null,
+					new StringElement("Original", original == null ? "" : original),
+					new StringElement("Suggested Fix", fixed == null ? "" : fixed));
+
+			CompareEditorInput input = new CompareEditorInput(config) {
+				@Override
+				protected Object prepareInput(IProgressMonitor monitor) {
+					return diffNode;
+				}
+			};
+			if (title != null && !title.isEmpty()) {
+				input.setTitle(title);
 			}
-		});
+
+			CompareUI.openCompareDialog(input);
+		};
+
+		if (Display.getCurrent() != null) {
+			openTask.run();
+		} else {
+			display.asyncExec(openTask);
+		}
 	}
 
 	/**
@@ -87,7 +106,7 @@ public final class CodeDiffDialog {
 
 		StringElement(String name, String content) {
 			this.name = name;
-			this.content = content;
+			this.content = content == null ? "" : content;
 		}
 
 		@Override
@@ -107,7 +126,7 @@ public final class CodeDiffDialog {
 
 		@Override
 		public InputStream getContents() {
-			return new ByteArrayInputStream(content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8));
+			return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
 		}
 
 		@Override

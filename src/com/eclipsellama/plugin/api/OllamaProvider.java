@@ -35,6 +35,12 @@ public class OllamaProvider implements LlmProvider {
 
 	@Override
 	public Stream<String> stream(String prompt, String contextCode) {
+		// TODO(phase-5-streaming): This implementation is synchronous — it blocks
+		// until the full response is received and returns it as a single-element
+		// Stream. True token-by-token streaming requires wiring OllamaClient's
+		// streamChat callback to a blocking queue and wrapping it in a lazy Stream.
+		// Performance impact: the UI thread will not receive any updates until the
+		// LLM finishes generating the entire reply.
 		return Stream.of(client.generate(prompt, model));
 	}
 }

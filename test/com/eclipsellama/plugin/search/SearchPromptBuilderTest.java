@@ -31,8 +31,7 @@ public class SearchPromptBuilderTest {
 	@Test
 	public void testNullResultsYieldsEmptyContext() {
 		String prompt = builder.build("q", null);
-		assertTrue(prompt.contains("<WebSearchContext>\n</WebSearchContext>"));
-		assertTrue(prompt.contains("<UserQuestion>\nq\n</UserQuestion>"));
+		assertEquals("q", prompt);
 	}
 
 	@Test

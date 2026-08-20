@@ -18,9 +18,11 @@ import org.eclipse.ui.IWorkbenchPreferencePage;
 import com.eclipsellama.plugin.core.ClientProvider;
 
 /**
- * Preferences page for EclipseLlama settings.
+ * Preferences page for EclipseLlama settings with modern layout, live latency
+ * test feedback, and organized configuration sections.
  */
 public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkbenchPreferencePage {
+
 	public EclipseLlamaPreferencePage() {
 	}
 
@@ -40,13 +42,15 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
 	@Override
 	public void init(IWorkbench workbench) {
-		setDescription("Configure EclipseLlama AI coding assistant");
+		setDescription("Configure EclipseLlama AI Coding Assistant settings, providers, and search.");
 	}
 
 	@Override
 	protected Control createContents(Composite parent) {
 		Composite container = new Composite(parent, SWT.NONE);
-		container.setLayout(new GridLayout(1, false));
+		GridLayout layout = new GridLayout(1, false);
+		layout.verticalSpacing = 12;
+		container.setLayout(layout);
 
 		createConnectionGroup(container);
 		createRetryGroup(container);
@@ -60,36 +64,36 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
 	private void createConnectionGroup(Composite parent) {
 		Group group = new Group(parent, SWT.NONE);
-		group.setText("LLM Connection");
-		group.setLayout(new GridLayout(2, false));
+		group.setText("LLM Connection & Credentials");
+		group.setLayout(new GridLayout(3, false));
 		group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
 		Label endpointLabel = new Label(group, SWT.NONE);
 		endpointLabel.setText("Endpoint URL:");
 
 		endpointText = new Text(group, SWT.BORDER);
-		endpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		endpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+		endpointText.setMessage("e.g. http://localhost:11434 or https://api.openai.com/v1");
 
 		Label apiKeyLabel = new Label(group, SWT.NONE);
-		apiKeyLabel.setText("Api key:");
+		apiKeyLabel.setText("API Key (OpenAI):");
 
-		apiKeyText = new Text(group, SWT.BORDER);
-		apiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		apiKeyText = new Text(group, SWT.BORDER | SWT.PASSWORD);
+		apiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+		apiKeyText.setMessage("Optional for local Ollama; required for OpenAI");
 
 		Button testBtn = new Button(group, SWT.PUSH);
-		testBtn.setText("Test");
+		testBtn.setText("⚡ Test Connection");
 		testBtn.addListener(SWT.Selection, e -> testConnection());
 
-		new Label(group, SWT.NONE); // Spacer
 		statusLabel = new Label(group, SWT.NONE);
 		statusLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
-		new Label(group, SWT.NONE);
-		new Label(group, SWT.NONE);
+		statusLabel.setText("Click 'Test Connection' to verify reachability.");
 	}
 
 	private void createRetryGroup(Composite parent) {
 		Group group = new Group(parent, SWT.NONE);
-		group.setText("Timeout & Retry");
+		group.setText("Timeout & Retry Settings");
 		group.setLayout(new GridLayout(2, false));
 		group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
@@ -115,17 +119,17 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		modelCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
 		Button refreshBtn = new Button(group, SWT.PUSH);
-		refreshBtn.setText("Refresh");
+		refreshBtn.setText("🔄 Refresh");
 		refreshBtn.addListener(SWT.Selection, e -> refreshModels());
 
 		Label infoLabel = new Label(group, SWT.NONE);
-		infoLabel.setText("Recommended: codellama, deepseek-coder, qwen2.5-coder");
+		infoLabel.setText("Recommended models: codellama, deepseek-coder, qwen2.5-coder, llama3.2");
 		infoLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
 	}
 
 	private void createSearchGroup(Composite parent) {
 		Group group = new Group(parent, SWT.NONE);
-		group.setText("Web Search");
+		group.setText("Web Search & RAG Context");
 		group.setLayout(new GridLayout(2, false));
 		group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
@@ -134,7 +138,7 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		searchProviderCombo.setItems(new String[] { "builtin", "searxng", "brave", "disabled" });
 		searchProviderCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
-		new Label(group, SWT.NONE).setText("Mode:");
+		new Label(group, SWT.NONE).setText("Search Mode:");
 		searchModeCombo = new Combo(group, SWT.DROP_DOWN | SWT.READ_ONLY);
 		searchModeCombo.setItems(new String[] { "off", "smart", "ask", "always" });
 		searchModeCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -143,11 +147,12 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		searchMaxResultsText = new Text(group, SWT.BORDER);
 		searchMaxResultsText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
-		new Label(group, SWT.NONE).setText("SearXNG endpoint:");
+		new Label(group, SWT.NONE).setText("SearXNG instance URL:");
 		searchSearxngEndpointText = new Text(group, SWT.BORDER);
 		searchSearxngEndpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		searchSearxngEndpointText.setMessage("e.g. http://localhost:8080/search");
 
-		new Label(group, SWT.NONE).setText("Search API key (Brave):");
+		new Label(group, SWT.NONE).setText("Brave Search API Key:");
 		searchApiKeyText = new Text(group, SWT.BORDER | SWT.PASSWORD);
 		searchApiKeyText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
@@ -159,16 +164,16 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
 	private void createPromptsGroup(Composite parent) {
 		Group group = new Group(parent, SWT.NONE);
-		group.setText("Commit Message Prompt");
+		group.setText("Commit Message Prompt Template");
 		group.setLayout(new GridLayout(1, false));
 		group.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
 		Label promptLabel = new Label(group, SWT.NONE);
-		promptLabel.setText("Template for generating commit messages:");
+		promptLabel.setText("Template for generating Git commit messages:");
 
 		commitPromptText = new Text(group, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
 		GridData promptData = new GridData(SWT.FILL, SWT.FILL, true, true);
-		promptData.heightHint = 100;
+		promptData.heightHint = 80;
 		commitPromptText.setLayoutData(promptData);
 	}
 
@@ -186,7 +191,7 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		searchFallbackButton.setSelection(EclipseLlamaPreferences.getSearchFallbackToBuiltin());
 		commitPromptText.setText(EclipseLlamaPreferences.getCommitPrompt());
 
-		// Load models
+		// Load recommended models
 		for (String model : EclipseLlamaPreferences.getRecommendedCodeModels()) {
 			modelCombo.add(model);
 		}
@@ -202,16 +207,20 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
 	private void testConnection() {
 		savePreferences();
-		statusLabel.setText("Testing...");
+		statusLabel.setText("🟡 Testing connection to " + endpointText.getText() + "...");
 
+		long start = System.currentTimeMillis();
 		new Thread(() -> {
 			boolean ok = ClientProvider.getClient().isServerReachable();
+			long duration = System.currentTimeMillis() - start;
 			Display.getDefault().asyncExec(() -> {
-				if (ok) {
-					statusLabel.setText("✅ Connected successfully");
-					refreshModels();
-				} else {
-					statusLabel.setText("❌ Cannot connect to endpoint");
+				if (!statusLabel.isDisposed()) {
+					if (ok) {
+						statusLabel.setText("🟢 Connected successfully (" + duration + " ms latency)");
+						refreshModels();
+					} else {
+						statusLabel.setText("🔴 Connection failed. Verify endpoint URL and network reachability.");
+					}
 				}
 			});
 		}).start();
@@ -222,7 +231,7 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		new Thread(() -> {
 			String[] models = ClientProvider.getClient().getAvailableModels();
 			Display.getDefault().asyncExec(() -> {
-				if (models.length > 0) {
+				if (models != null && models.length > 0 && !modelCombo.isDisposed()) {
 					String current = modelCombo.getText();
 					modelCombo.removeAll();
 					for (String model : models) {
@@ -296,12 +305,13 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		timeoutText.setText("60");
 		retryText.setText("3");
 		searchProviderCombo.select(0);
+		searchModeCombo.select(0);
 		searchMaxResultsText.setText("5");
 		searchApiKeyText.setText("");
 		searchSearxngEndpointText.setText("");
 		searchFallbackButton.setSelection(true);
 		commitPromptText.setText("Generate a concise Conventional Commit message for the following Git diff. "
-				+ "Format: type(scope): description\\n\\n[optional body]");
+				+ "Format: type(scope): description\n\n[optional body]");
 		super.performDefaults();
 	}
 }

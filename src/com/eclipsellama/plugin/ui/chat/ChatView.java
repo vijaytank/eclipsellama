@@ -1,8 +1,14 @@
 package com.eclipsellama.plugin.ui.chat;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.custom.StyleRange;
@@ -18,25 +24,42 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.Text;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.ui.texteditor.IDocumentProvider;
+import org.eclipse.ui.texteditor.ITextEditor;
 
+import com.eclipsellama.plugin.api.LlmProvider;
+import com.eclipsellama.plugin.api.LlmProviderRegistry;
 import com.eclipsellama.plugin.context.CodeContextCollector;
 import com.eclipsellama.plugin.core.ChatMessage;
 import com.eclipsellama.plugin.core.ClientProvider;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
+import com.eclipsellama.plugin.search.SearchResult;
+import com.eclipsellama.plugin.search.WebSearchRouter;
 import com.eclipsellama.plugin.search.WebSearchService;
+import com.eclipsellama.plugin.storage.ChatHistoryStore;
 import com.eclipsellama.plugin.ui.CodeDiffDialog;
 
 /**
- * Modern chat view for EclipseLlama. Features: message bubbles, markdown
- * rendering, streaming responses, copy code.
+ * Modern, memory-aware interactive chat interface for EclipseLlama. Features:
+ * sliding context window, ephemeral search context (no history bloat), dynamic
+ * MCP tool routing, theme-adaptive cards, Markdown, streaming, dual code
+ * actions.
  */
 public class ChatView extends ViewPart {
 
 	public static final String ID = "com.eclipsellama.plugin.view.chat";
+
+	// Memory & Context window limits (Sliding window budget)
+	private static final int MAX_CONTEXT_MESSAGES = 10;
+	private static final int MAX_CONTEXT_CHARS = 12000;
 
 	// UI Components
 	private ScrolledComposite scrolledComposite;
@@ -45,16 +68,17 @@ public class ChatView extends ViewPart {
 	private Button sendButton;
 	private Button stopButton;
 	private Combo modelCombo;
+	private Label statusDot;
 	private Label statusLabel;
 	private Label charCountLabel;
 
 	// State
 	private final List<ChatMessage> conversation = new ArrayList<>();
-	private boolean isStreaming = false;
-	private boolean webSearchEnabled = false;
+	private volatile boolean isStreaming = false;
 	private StringBuilder currentResponse;
 	private StyledText currentAssistantBubble;
-	// Track last action and context for diff and context-aware prompts
+
+	// Track last action and context
 	private String lastAction = "";
 	private String lastContext = "";
 
@@ -65,11 +89,12 @@ public class ChatView extends ViewPart {
 	private StyledText searchResultsText;
 
 	// Persistence
-	private final com.eclipsellama.plugin.storage.ChatHistoryStore historyStore = new com.eclipsellama.plugin.storage.ChatHistoryStore();
+	private final ChatHistoryStore historyStore = new ChatHistoryStore();
 
 	// Styling
 	private ChatStyles styles;
 	private MarkdownRenderer markdownRenderer;
+	private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -81,26 +106,33 @@ public class ChatView extends ViewPart {
 
 		createToolbar(parent);
 		createChatArea(parent);
+		createQuickActionsBar(parent);
 		createInputArea(parent);
 
 		addSystemMessage();
 		refreshModels();
 		loadHistory();
-		webSearchEnabled = !"off".equals(EclipseLlamaPreferences.getSearchMode());
 		updateSearchModeCombo();
 	}
 
 	private void createToolbar(Composite parent) {
 		Composite toolbar = new Composite(parent, SWT.NONE);
-		toolbar.setLayout(new GridLayout(7, false));
+		GridLayout layout = new GridLayout(8, false);
+		layout.marginWidth = 6;
+		layout.marginHeight = 4;
+		layout.horizontalSpacing = 6;
+		toolbar.setLayout(layout);
 		toolbar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
 		// Model selector
 		Label modelLabel = new Label(toolbar, SWT.NONE);
 		modelLabel.setText("🦙 Model:");
+		modelLabel.setFont(styles.getBoldFont());
 
 		modelCombo = new Combo(toolbar, SWT.DROP_DOWN | SWT.READ_ONLY);
-		modelCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		GridData comboData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+		comboData.minimumWidth = 140;
+		modelCombo.setLayoutData(comboData);
 		modelCombo.addListener(SWT.Selection, e -> {
 			String selected = modelCombo.getText();
 			if (!selected.isEmpty()) {
@@ -110,36 +142,36 @@ public class ChatView extends ViewPart {
 		});
 
 		// Refresh button
-		Button refreshBtn = new Button(toolbar, SWT.PUSH);
+		Button refreshBtn = new Button(toolbar, SWT.PUSH | SWT.FLAT);
 		refreshBtn.setText("🔄");
-		refreshBtn.setToolTipText("Refresh available models");
+		refreshBtn.setToolTipText("Refresh available models from endpoint");
 		refreshBtn.addListener(SWT.Selection, e -> refreshModels());
 
 		// Clear button
-		Button clearBtn = new Button(toolbar, SWT.PUSH);
+		Button clearBtn = new Button(toolbar, SWT.PUSH | SWT.FLAT);
 		clearBtn.setText("🗑️");
-		clearBtn.setToolTipText("Clear conversation");
+		clearBtn.setToolTipText("Clear conversation history");
 		clearBtn.addListener(SWT.Selection, e -> clearConversation());
 
 		// Web Search mode selector
 		Label searchModeLabel = new Label(toolbar, SWT.NONE);
 		searchModeLabel.setText("🌐 Search:");
+		searchModeLabel.setFont(styles.getBoldFont());
 
 		searchModeCombo = new Combo(toolbar, SWT.DROP_DOWN | SWT.READ_ONLY);
 		searchModeCombo.setItems(new String[] { "Off", "Smart", "Ask", "Always" });
 		searchModeCombo.setToolTipText(
-				"Off: no search. Smart: model decides. Ask: confirm before search. Always: search every message.");
+				"Off: no search\nSmart: model decides\nAsk: confirm before search\nAlways: search every message");
 		searchModeCombo.addListener(SWT.Selection, e -> {
 			String mode = mapModeLabelToKey(searchModeCombo.getText());
 			EclipseLlamaPreferences.setSearchMode(mode);
 			EclipseLlamaPreferences.save();
-			webSearchEnabled = !"off".equals(mode);
 		});
 
 		// Settings button
-		Button settingsBtn = new Button(toolbar, SWT.PUSH);
+		Button settingsBtn = new Button(toolbar, SWT.PUSH | SWT.FLAT);
 		settingsBtn.setText("⚙️");
-		settingsBtn.setToolTipText("Open preferences");
+		settingsBtn.setToolTipText("Open EclipseLlama preferences");
 		settingsBtn.addListener(SWT.Selection, e -> {
 			org.eclipse.ui.dialogs.PreferencesUtil
 					.createPreferenceDialogOn(parent.getShell(), "com.eclipsellama.plugin.preferences", null, null)
@@ -154,72 +186,172 @@ public class ChatView extends ViewPart {
 		scrolledComposite.setExpandVertical(true);
 
 		messagesContainer = new Composite(scrolledComposite, SWT.NONE);
-		messagesContainer.setLayout(new GridLayout(1, false));
-		messagesContainer.setBackground(parent.getDisplay().getSystemColor(SWT.COLOR_WHITE));
+		GridLayout layout = new GridLayout(1, false);
+		layout.marginWidth = 8;
+		layout.marginHeight = 8;
+		layout.verticalSpacing = 10;
+		messagesContainer.setLayout(layout);
+		messagesContainer.setBackground(styles.getContainerBackground());
 
 		scrolledComposite.setContent(messagesContainer);
 
+		// Smart word wrap resize listener: adjusts container width dynamically to the
+		// visible viewport
+		scrolledComposite.addListener(SWT.Resize, e -> {
+			int width = scrolledComposite.getClientArea().width;
+			if (width > 50) {
+				messagesContainer.setSize(width, messagesContainer.computeSize(width, SWT.DEFAULT).y);
+				messagesContainer.layout(true, true);
+				scrolledComposite.setMinSize(messagesContainer.computeSize(width, SWT.DEFAULT));
+			}
+		});
+
 		createSearchResultsPanel(parent);
-		// Welcome message
 		addWelcomeMessage();
 	}
 
 	/**
-	 * Collapsible panel that shows the last web search results (title, URL,
-	 * snippet) above the chat output.
+	 * Modern collapsible card showing web search results.
 	 */
 	private void createSearchResultsPanel(Composite parent) {
 		Button toggle = new Button(parent, SWT.CHECK);
-		toggle.setText("Show web search results");
+		toggle.setText("🌐 Web Search Context Panel");
+		toggle.setFont(styles.getSmallFont());
 		toggle.setSelection(false);
 		toggle.addListener(SWT.Selection, e -> {
 			if (searchResultsPanel != null && !searchResultsPanel.isDisposed()) {
 				searchResultsPanel.setVisible(toggle.getSelection());
+				((GridData) searchResultsPanel.getLayoutData()).exclude = !toggle.getSelection();
 				parent.layout(true, true);
 			}
 		});
 
 		searchResultsPanel = new Composite(parent, SWT.BORDER);
-		searchResultsPanel.setLayout(new GridLayout(1, false));
-		searchResultsPanel.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+		GridLayout layout = new GridLayout(1, false);
+		layout.marginWidth = 8;
+		layout.marginHeight = 6;
+		searchResultsPanel.setLayout(layout);
+		GridData panelData = new GridData(SWT.FILL, SWT.FILL, true, false);
+		panelData.exclude = true;
+		searchResultsPanel.setLayoutData(panelData);
 		searchResultsPanel.setVisible(false);
 
 		searchResultsText = new StyledText(searchResultsPanel, SWT.WRAP | SWT.READ_ONLY | SWT.V_SCROLL);
-		GridData textData = new GridData(SWT.FILL, SWT.FILL, true, true);
-		textData.heightHint = 120;
+		GridData textData = new GridData(SWT.FILL, SWT.FILL, true, false);
+		textData.heightHint = 85;
 		searchResultsText.setLayoutData(textData);
 		searchResultsText.setWordWrap(true);
+		searchResultsText.setBackground(styles.getAssistantBubbleBackground());
+		searchResultsText.setForeground(styles.getAssistantBubbleForeground());
 	}
 
+	/**
+	 * Hero welcome state with interactive action chips.
+	 */
 	private void addWelcomeMessage() {
-		Composite welcome = new Composite(messagesContainer, SWT.NONE);
-		welcome.setLayout(new GridLayout(1, false));
+		Composite welcome = new Composite(messagesContainer, SWT.BORDER);
+		GridLayout layout = new GridLayout(1, false);
+		layout.marginWidth = 16;
+		layout.marginHeight = 16;
+		layout.verticalSpacing = 8;
+		welcome.setLayout(layout);
 		welcome.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-		welcome.setBackground(messagesContainer.getBackground());
+		welcome.setBackground(styles.getAssistantBubbleBackground());
 
 		Label logo = new Label(welcome, SWT.CENTER);
 		logo.setText("🦙 EclipseLlama");
 		logo.setFont(styles.getHeaderFont());
 		logo.setForeground(styles.getHeaderColor());
 		logo.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, true, false));
-		logo.setBackground(messagesContainer.getBackground());
+		logo.setBackground(styles.getAssistantBubbleBackground());
 
 		Label tagline = new Label(welcome, SWT.CENTER);
-		tagline.setText("Your AI coding assistant • Powered by Ollama");
+		tagline.setText("Your AI coding assistant • Local Ollama • OpenAI • Model Context Protocol (MCP)");
+		tagline.setFont(styles.getNormalFont());
 		tagline.setForeground(styles.getTimestampColor());
 		tagline.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, true, false));
-		tagline.setBackground(messagesContainer.getBackground());
+		tagline.setBackground(styles.getAssistantBubbleBackground());
 
-		Label hint = new Label(welcome, SWT.CENTER);
-		hint.setText("\n💡 Tip: Select code and right-click → EclipseLlama for quick actions\n");
-		hint.setForeground(styles.getTimestampColor());
-		hint.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, true, false));
-		hint.setBackground(messagesContainer.getBackground());
+		// Quick action chips row
+		Composite chipsContainer = new Composite(welcome, SWT.NONE);
+		GridLayout chipsLayout = new GridLayout(5, false);
+		chipsLayout.marginWidth = 0;
+		chipsLayout.marginHeight = 8;
+		chipsLayout.horizontalSpacing = 6;
+		chipsContainer.setLayout(chipsLayout);
+		chipsContainer.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, true, false));
+		chipsContainer.setBackground(styles.getAssistantBubbleBackground());
+
+		createChip(chipsContainer, "⚡ Explain Code",
+				() -> triggerQuickPrompt("Explain this code step-by-step with complexity analysis:\n"));
+		createChip(chipsContainer, "✨ Fix Bugs",
+				() -> triggerQuickPrompt("Find and fix bugs in this code, explaining the root cause:\n"));
+		createChip(chipsContainer, "🧪 Generate Tests",
+				() -> triggerQuickPrompt("Generate comprehensive JUnit 4 unit tests covering edge cases for:\n"));
+		createChip(chipsContainer, "📖 Add Javadoc",
+				() -> triggerQuickPrompt("Generate clean Javadoc documentation and parameter descriptions for:\n"));
+		createChip(chipsContainer, "🔄 Refactor Code", () -> triggerQuickPrompt(
+				"Refactor this code for optimal readability, performance, and clean architecture:\n"));
+	}
+
+	private void createChip(Composite parent, String text, Runnable onClick) {
+		Button chip = new Button(parent, SWT.PUSH | SWT.FLAT);
+		chip.setText(text);
+		chip.setFont(styles.getSmallFont());
+		chip.setBackground(styles.getChipBackground());
+		chip.setForeground(styles.getChipForeground());
+		chip.addListener(SWT.Selection, e -> onClick.run());
+	}
+
+	private void triggerQuickPrompt(String prefix) {
+		inputField.setText(prefix);
+		inputField.setFocus();
+		inputField.setSelection(prefix.length());
+	}
+
+	/**
+	 * Quick action bar above the input box for one-click prompts.
+	 */
+	private void createQuickActionsBar(Composite parent) {
+		Composite bar = new Composite(parent, SWT.NONE);
+		GridLayout layout = new GridLayout(6, false);
+		layout.marginWidth = 4;
+		layout.marginHeight = 2;
+		layout.horizontalSpacing = 4;
+		bar.setLayout(layout);
+		bar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		Label label = new Label(bar, SWT.NONE);
+		label.setText("Quick Actions:");
+		label.setFont(styles.getSmallFont());
+		label.setForeground(styles.getTimestampColor());
+
+		createMiniActionButton(bar, "⚡ Explain", "Explain selected code",
+				() -> triggerQuickPrompt("Explain this code:\n"));
+		createMiniActionButton(bar, "🛠️ Fix", "Suggest fixes and show diff",
+				() -> triggerQuickPrompt("Find and fix any issues in this code:\n"));
+		createMiniActionButton(bar, "🧪 Test", "Generate JUnit tests",
+				() -> triggerQuickPrompt("Generate unit tests for this code:\n"));
+		createMiniActionButton(bar, "📝 Doc", "Generate Javadoc",
+				() -> triggerQuickPrompt("Generate documentation for this code:\n"));
+		createMiniActionButton(bar, "🔄 Refactor", "Refactor for clarity and maintainability",
+				() -> triggerQuickPrompt("Refactor this code:\n"));
+	}
+
+	private void createMiniActionButton(Composite parent, String text, String tooltip, Runnable action) {
+		Button btn = new Button(parent, SWT.PUSH | SWT.FLAT);
+		btn.setText(text);
+		btn.setToolTipText(tooltip);
+		btn.setFont(styles.getSmallFont());
+		btn.addListener(SWT.Selection, e -> action.run());
 	}
 
 	private void createInputArea(Composite parent) {
 		Composite inputArea = new Composite(parent, SWT.NONE);
-		inputArea.setLayout(new GridLayout(3, false));
+		GridLayout inputLayout = new GridLayout(2, false);
+		inputLayout.marginWidth = 4;
+		inputLayout.marginHeight = 4;
+		inputArea.setLayout(inputLayout);
 		inputArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
 		// Input field
@@ -227,7 +359,7 @@ public class ChatView extends ViewPart {
 		GridData inputData = new GridData(SWT.FILL, SWT.CENTER, true, false);
 		inputData.heightHint = 60;
 		inputField.setLayoutData(inputData);
-		inputField.setMessage("Ask anything... (Enter to send, Shift+Enter for new line)");
+		inputField.setMessage("Ask anything... (Enter to send, Shift+Enter for newline)");
 
 		inputField.addKeyListener(new KeyAdapter() {
 			@Override
@@ -248,30 +380,44 @@ public class ChatView extends ViewPart {
 
 		// Buttons composite
 		Composite buttons = new Composite(inputArea, SWT.NONE);
-		buttons.setLayout(new GridLayout(1, false));
+		GridLayout btnLayout = new GridLayout(1, false);
+		btnLayout.marginWidth = 0;
+		btnLayout.marginHeight = 0;
+		buttons.setLayout(btnLayout);
+		buttons.setLayoutData(new GridData(SWT.FILL, SWT.FILL, false, false));
 
 		sendButton = new Button(buttons, SWT.PUSH);
 		sendButton.setText("Send ➤");
-		sendButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
+		sendButton.setFont(styles.getBoldFont());
+		sendButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 		sendButton.addListener(SWT.Selection, e -> sendMessage());
 
 		stopButton = new Button(buttons, SWT.PUSH);
 		stopButton.setText("Stop ⏹");
 		stopButton.setEnabled(false);
-		stopButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
+		stopButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 		stopButton.addListener(SWT.Selection, e -> stopStreaming());
 
 		// Status bar
 		Composite statusBar = new Composite(parent, SWT.NONE);
-		statusBar.setLayout(new GridLayout(2, false));
+		GridLayout statusLayout = new GridLayout(3, false);
+		statusLayout.marginWidth = 6;
+		statusLayout.marginHeight = 2;
+		statusBar.setLayout(statusLayout);
 		statusBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		statusDot = new Label(statusBar, SWT.NONE);
+		statusDot.setText("🟢");
+		statusDot.setFont(styles.getSmallFont());
 
 		statusLabel = new Label(statusBar, SWT.NONE);
 		statusLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 		statusLabel.setText("Ready");
+		statusLabel.setFont(styles.getSmallFont());
 
 		charCountLabel = new Label(statusBar, SWT.RIGHT);
 		charCountLabel.setText("0 chars");
+		charCountLabel.setFont(styles.getSmallFont());
 		charCountLabel.setForeground(styles.getTimestampColor());
 	}
 
@@ -282,11 +428,8 @@ public class ChatView extends ViewPart {
 		conversation.add(ChatMessage.system(systemPrompt));
 	}
 
-	/**
-	 * Restores a previously persisted conversation into the chat area.
-	 */
 	private void loadHistory() {
-		java.util.List<ChatMessage> saved = historyStore.load();
+		List<ChatMessage> saved = historyStore.load();
 		for (ChatMessage m : saved) {
 			conversation.add(m);
 			if (m.isUser()) {
@@ -302,14 +445,21 @@ public class ChatView extends ViewPart {
 	}
 
 	private void refreshModels() {
-		statusLabel.setText("Loading models...");
+		updateStatus("🟡", "Loading models...");
 		modelCombo.removeAll();
 
 		new Thread(() -> {
 			String[] models = ClientProvider.getClient().getAvailableModels();
-			Display.getDefault().asyncExec(() -> {
-				if (models.length == 0) {
-					statusLabel.setText("⚠️ No models found. Is endpoint running?");
+			Display display = Display.getDefault();
+			if (display == null || display.isDisposed()) {
+				return;
+			}
+			display.asyncExec(() -> {
+				if (modelCombo == null || modelCombo.isDisposed()) {
+					return;
+				}
+				if (models == null || models.length == 0) {
+					updateStatus("🔴", "Endpoint unreachable. Check settings.");
 					for (String model : EclipseLlamaPreferences.getRecommendedCodeModels()) {
 						modelCombo.add(model);
 					}
@@ -317,7 +467,7 @@ public class ChatView extends ViewPart {
 					for (String model : models) {
 						modelCombo.add(model);
 					}
-					statusLabel.setText("Ready • " + models.length + " models available");
+					updateStatus("🟢", "Ready • " + models.length + " models available");
 				}
 
 				String currentModel = EclipseLlamaPreferences.getModel();
@@ -331,6 +481,21 @@ public class ChatView extends ViewPart {
 		}).start();
 	}
 
+	private void updateStatus(String dot, String text) {
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> {
+			if (statusDot != null && !statusDot.isDisposed()) {
+				statusDot.setText(dot);
+			}
+			if (statusLabel != null && !statusLabel.isDisposed()) {
+				statusLabel.setText(text);
+			}
+		});
+	}
+
 	private void sendMessage() {
 		String input = inputField.getText().trim();
 		if (input.isEmpty()) {
@@ -338,48 +503,213 @@ public class ChatView extends ViewPart {
 		}
 
 		if (isStreaming) {
-			statusLabel.setText("⚠️ Already thinking... please wait or stop.");
+			updateStatus("⚠️", "Already thinking... please wait or click Stop.");
 			return;
 		}
 
-		// Add user message bubble
+		// Add clean user message to persistent conversation
 		ChatMessage userMsg = ChatMessage.user(input);
 		conversation.add(userMsg);
 		addMessageBubble("👤 You", input, true);
 
-		// Enrich with web search only when the selected mode warrants it. The model
-		// decides in Smart mode; Ask requires user confirmation; Off never searches.
-		if (shouldSearch(input)) {
-			enrichWithWebSearch();
-		}
-
 		inputField.setText("");
 		charCountLabel.setText("0 chars");
 
-		String model = modelCombo.getText();
-		if (model.isEmpty()) {
-			model = EclipseLlamaPreferences.getModel();
+		String selectedModel = modelCombo.getText();
+		if (selectedModel == null || selectedModel.isEmpty()) {
+			selectedModel = EclipseLlamaPreferences.getModel();
 		}
 
-		if (model.isEmpty()) {
+		if (selectedModel == null || selectedModel.isEmpty()) {
 			addMessageBubble("🦙 EclipseLlama",
 					"⚠️ No model selected. Please select a model in the toolbar or settings.", false);
 			return;
 		}
 
+		final String model = selectedModel;
 		startStreaming();
 		currentResponse = new StringBuilder();
 
 		// Create assistant bubble for streaming
-		currentAssistantBubble = addMessageBubble("🦙 EclipseLlama", "", false);
+		currentAssistantBubble = addMessageBubble("🦙 EclipseLlama • " + model, "", false);
 
-		ClientProvider.getClient().streamChat(conversation, model, this::onChunk, this::onComplete, this::onError);
+		// Execute web search, MCP probing, and inference asynchronously
+		CompletableFuture.runAsync(() -> {
+			try {
+				if (!isStreaming) {
+					return;
+				}
+
+				// Execute web search if enabled and get ephemeral search prompt
+				String searchPrompt = executeWebSearchIfNeeded(input, model);
+
+				if (!isStreaming) {
+					return;
+				}
+
+				// Build memory-aware sliding window (prevents context blowout)
+				List<ChatMessage> activeWindow = getActiveConversationWindow(searchPrompt);
+
+				LlmProviderRegistry registry = LlmProviderRegistry.getInstance();
+				LlmProvider provider;
+				if (registry.hasExplicitActiveProvider()) {
+					provider = registry.getActiveProvider().orElse(null);
+				} else {
+					String backendName = EclipseLlamaPreferences
+							.getBackendType() == EclipseLlamaPreferences.BackendType.OPENAI ? "OpenAI" : "Ollama";
+					provider = registry.getProvider(backendName).or(() -> registry.getActiveProvider()).orElse(null);
+				}
+
+				if (provider == null) {
+					ClientProvider.getClient().streamChat(activeWindow, model, this::onChunk, this::onComplete,
+							this::onError);
+					return;
+				}
+
+				StringBuilder full = new StringBuilder();
+				String prompt = buildConversationPrompt(activeWindow);
+				provider.stream(prompt, lastContext).forEach(chunk -> {
+					if (isStreaming && chunk != null && !chunk.isEmpty()) {
+						full.append(chunk);
+						onChunk(chunk);
+					}
+				});
+
+				if (isStreaming) {
+					onComplete(full.toString());
+				}
+			} catch (Exception e) {
+				onError(e.getMessage());
+			}
+		});
 	}
 
 	/**
-	 * Builds the web search service (registry + built-in default) from preferences.
-	 * External providers are only used when configured.
+	 * Memory-aware sliding window: returns system prompt + recent N messages within
+	 * token/character budget to prevent blowing up the context window.
 	 */
+	private List<ChatMessage> getActiveConversationWindow(String currentSearchPrompt) {
+		List<ChatMessage> window = new ArrayList<>();
+		if (conversation.isEmpty()) {
+			return window;
+		}
+
+		ChatMessage systemMsg = conversation.get(0).isSystem() ? conversation.get(0) : null;
+		if (systemMsg != null) {
+			window.add(systemMsg);
+		}
+
+		List<ChatMessage> recent = new ArrayList<>();
+		int charCount = 0;
+		int startIndex = conversation.size() - 1;
+
+		for (int i = startIndex; i >= (systemMsg != null ? 1 : 0); i--) {
+			ChatMessage msg = conversation.get(i);
+			int len = msg.getContent().length();
+			if (recent.size() >= MAX_CONTEXT_MESSAGES || (charCount + len > MAX_CONTEXT_CHARS && !recent.isEmpty())) {
+				break;
+			}
+			recent.add(0, msg);
+			charCount += len;
+		}
+
+		// Apply ephemeral search context only to the current user prompt in the active
+		// window
+		if (currentSearchPrompt != null && !recent.isEmpty()) {
+			int lastIdx = recent.size() - 1;
+			ChatMessage last = recent.get(lastIdx);
+			if (last.isUser()) {
+				recent.set(lastIdx, ChatMessage.user(currentSearchPrompt));
+			}
+		}
+
+		window.addAll(recent);
+		return window;
+	}
+
+	private String executeWebSearchIfNeeded(String input, String model) {
+		String mode = EclipseLlamaPreferences.getSearchMode();
+		if ("off".equals(mode)) {
+			return null;
+		}
+
+		boolean shouldSearch = false;
+		String query = input;
+
+		if ("always".equals(mode)) {
+			shouldSearch = true;
+		} else {
+			WebSearchRouter.SearchDecision decision = new WebSearchRouter(ClientProvider.getClient()).decide(input,
+					model);
+			if (decision.isSearch()) {
+				query = decision.getQuery();
+				if ("ask".equals(mode)) {
+					final String q = query;
+					final boolean[] confirmed = new boolean[1];
+					Display.getDefault().syncExec(() -> {
+						confirmed[0] = confirmSearch(q);
+					});
+					shouldSearch = confirmed[0];
+				} else {
+					shouldSearch = true;
+				}
+			}
+		}
+
+		if (shouldSearch && isStreaming) {
+			final String q = query;
+			updateStatus("🌐", "Searching the web (" + q + ")...");
+
+			WebSearchService service = createWebSearchService();
+			List<SearchResult> results = service.search(q);
+			String prompt = service.buildPrompt(input, results);
+
+			Display.getDefault().asyncExec(() -> {
+				renderSearchResults(q, results);
+				updateStatus("🦙", "Generating response...");
+			});
+			return prompt;
+		}
+		return null;
+	}
+
+	private String buildConversationPrompt(List<ChatMessage> window) {
+		StringBuilder sb = new StringBuilder();
+		for (ChatMessage msg : window) {
+			String role = msg.isSystem() ? "System" : (msg.isUser() ? "User" : "Assistant");
+			sb.append(role).append(": ").append(msg.getContent()).append('\n');
+		}
+		String mcpContext = buildMcpStatusBlock();
+		if (!mcpContext.isEmpty()) {
+			sb.append("\n[EclipseLlama configured MCP servers - Model Context Protocol AI tools]\n").append(mcpContext)
+					.append("\n[/MCP servers]\n");
+		}
+		return sb.toString();
+	}
+
+	private String buildMcpStatusBlock() {
+		StringBuilder sb = new StringBuilder();
+		for (LlmProvider p : LlmProviderRegistry.getInstance().getAllProviders().values()) {
+			if (p instanceof com.eclipsellama.plugin.mcp.McpProvider) {
+				com.eclipsellama.plugin.mcp.McpProvider mcp = (com.eclipsellama.plugin.mcp.McpProvider) p;
+				com.eclipsellama.plugin.mcp.McpServerConfig cfg = mcp.getConfig();
+				com.eclipsellama.plugin.mcp.McpProvider.ProbeResult probe = mcp.probeStatus();
+				String serverName = (cfg.getName() != null && !cfg.getName().isBlank()) ? cfg.getName() : cfg.getId();
+				sb.append("- server \"").append(serverName).append("\": transport=").append(cfg.getTransport());
+				if (cfg.getEndpoint() != null && !cfg.getEndpoint().isEmpty()) {
+					sb.append(", endpoint=").append(cfg.getEndpoint());
+				}
+				sb.append(", status=").append(probe.connected ? "connected" : "unreachable");
+				if (!probe.connected) {
+					sb.append(" (").append(probe.detail).append(")");
+				}
+				sb.append(", tools=").append(probe.tools.isEmpty() ? "none" : String.join(", ", probe.tools));
+				sb.append('\n');
+			}
+		}
+		return sb.toString();
+	}
+
 	private WebSearchService createWebSearchService() {
 		int max = EclipseLlamaPreferences.getSearchMaxResults();
 		java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
@@ -390,47 +720,19 @@ public class ChatView extends ViewPart {
 				max, http);
 		var builtin = new com.eclipsellama.plugin.search.BuiltInSearchProvider(max, http,
 				new com.eclipsellama.plugin.search.parser.DuckDuckGoHtmlParser());
-		var registry = new com.eclipsellama.plugin.search.SearchProviderRegistry(
-				java.util.List.of(builtin, searxng, brave));
+		var registry = new com.eclipsellama.plugin.search.SearchProviderRegistry(List.of(builtin, searxng, brave));
 		return new WebSearchService(registry);
 	}
 
-	/**
-	 * Whether the current message should trigger a web search, based on the
-	 * selected mode. Off never searches; Always searches everything; Smart uses the
-	 * LLM router; Ask uses the router and then requires user confirmation.
-	 */
-	private boolean shouldSearch(String message) {
-		String mode = EclipseLlamaPreferences.getSearchMode();
-		if ("off".equals(mode)) {
-			return false;
-		}
-		if ("always".equals(mode)) {
-			return true;
-		}
-		// smart or ask: ask the model whether search is warranted.
-		String model = modelCombo.getText();
-		if (model.isEmpty()) {
-			model = EclipseLlamaPreferences.getModel();
-		}
-		com.eclipsellama.plugin.search.WebSearchRouter.SearchDecision decision = new com.eclipsellama.plugin.search.WebSearchRouter(
-				ClientProvider.getClient()).decide(message, model);
-		if (!decision.isSearch()) {
-			return false;
-		}
-		if ("ask".equals(mode)) {
-			return confirmSearch(decision.getQuery());
-		}
-		return true;
-	}
-
 	private boolean confirmSearch(String query) {
-		String[] labels = { "Search", "Answer without web" };
-		org.eclipse.swt.widgets.MessageBox box = new org.eclipse.swt.widgets.MessageBox(
-				Display.getDefault().getActiveShell(), SWT.ICON_QUESTION | SWT.YES | SWT.NO);
-		box.setText("Web search");
-		box.setMessage("The assistant wants to search the web:\n\nQuery: " + query
-				+ "\n\n[Yes] Search  [No] Answer without web");
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return false;
+		}
+		MessageBox box = new MessageBox(display.getActiveShell(), SWT.ICON_QUESTION | SWT.YES | SWT.NO);
+		box.setText("Web Search Confirmation");
+		box.setMessage(
+				"EclipseLlama wants to search the web:\n\n\"" + query + "\"\n\nAllow web search to enrich response?");
 		return box.open() == SWT.YES;
 	}
 
@@ -462,104 +764,76 @@ public class ChatView extends ViewPart {
 		};
 	}
 
-	/**
-	 * Runs a web search for the last user message and injects the results as a
-	 * safe, delimited pre-prompt. Search failures are non-fatal: the message is
-	 * sent unchanged.
-	 */
-	private void enrichWithWebSearch() {
-		String query = lastUserMessageContent();
-		if (query == null || query.isEmpty()) {
-			return;
-		}
-		statusLabel.setText("🌐 Searching the web...");
-		java.util.List<com.eclipsellama.plugin.search.SearchResult> results = webSearchService.search(query);
-		String prompt = webSearchService.buildPrompt(query, results);
-		prependToLastUserMessage(prompt);
-		renderSearchResults(query, results);
-		statusLabel.setText("");
-	}
-
-	/**
-	 * Renders the given results into the collapsible search-results panel.
-	 */
-	private void renderSearchResults(String query,
-			java.util.List<com.eclipsellama.plugin.search.SearchResult> results) {
+	private void renderSearchResults(String query, List<SearchResult> results) {
 		if (searchResultsText == null || searchResultsText.isDisposed()) {
 			return;
 		}
-		StringBuilder sb = new StringBuilder("Results for \"").append(query).append("\"\n");
+		StringBuilder sb = new StringBuilder("🔍 Search Results for \"").append(query).append("\"\n\n");
 		int i = 1;
-		for (com.eclipsellama.plugin.search.SearchResult r : results) {
-			sb.append(i++).append(". ").append(r.getTitle() == null ? "" : r.getTitle()).append('\n')
-					.append(r.getUrl() == null ? "" : r.getUrl()).append('\n')
-					.append(r.getSnippet() == null ? "" : r.getSnippet()).append("\n\n");
+		if (results != null) {
+			for (SearchResult r : results) {
+				sb.append(i++).append(". ").append(r.getTitle() == null ? "" : r.getTitle()).append('\n')
+						.append("   🔗 ").append(r.getUrl() == null ? "" : r.getUrl()).append('\n').append("   ")
+						.append(r.getSnippet() == null ? "" : r.getSnippet()).append("\n\n");
+			}
 		}
 		searchResultsText.setText(sb.toString());
 	}
 
-	private String lastUserMessageContent() {
-		for (int i = conversation.size() - 1; i >= 0; i--) {
-			if (conversation.get(i).isUser()) {
-				return conversation.get(i).getContent();
-			}
-		}
-		return null;
-	}
-
-	private void prependToLastUserMessage(String context) {
-		for (int i = conversation.size() - 1; i >= 0; i--) {
-			ChatMessage m = conversation.get(i);
-			if (m.isUser()) {
-				// Replace the message content with context + original (context is a prefix).
-				conversation.set(i, ChatMessage.user(context + m.getContent()));
-				return;
-			}
-		}
-	}
-
 	/**
-	 * Add a styled message bubble to the chat.
+	 * Modern Card Message Bubble with header pill, timestamp, and actions toolbar.
 	 */
 	private StyledText addMessageBubble(String sender, String content, boolean isUser) {
-		// Bubble container with padding
-		Composite bubble = new Composite(messagesContainer, SWT.NONE);
+		Composite bubble = new Composite(messagesContainer, SWT.BORDER);
 		GridLayout bubbleLayout = new GridLayout(1, false);
 		bubbleLayout.marginWidth = 12;
-		bubbleLayout.marginHeight = 8;
+		bubbleLayout.marginHeight = 10;
+		bubbleLayout.verticalSpacing = 6;
 		bubble.setLayout(bubbleLayout);
 
 		GridData bubbleData = new GridData(SWT.FILL, SWT.CENTER, true, false);
-		bubbleData.widthHint = 500;
 		bubble.setLayoutData(bubbleData);
 
-		// Set bubble colors
 		Color bgColor = isUser ? styles.getUserBubbleBackground() : styles.getAssistantBubbleBackground();
+		Color fgColor = isUser ? styles.getUserBubbleForeground() : styles.getAssistantBubbleForeground();
 		bubble.setBackground(bgColor);
 
-		// Sender label
-		Label senderLabel = new Label(bubble, SWT.NONE);
+		// Header Row: Sender label on left, Timestamp on right
+		Composite headerRow = new Composite(bubble, SWT.NONE);
+		GridLayout headerLayout = new GridLayout(2, false);
+		headerLayout.marginWidth = 0;
+		headerLayout.marginHeight = 0;
+		headerRow.setLayout(headerLayout);
+		headerRow.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		headerRow.setBackground(bgColor);
+
+		Label senderLabel = new Label(headerRow, SWT.NONE);
 		senderLabel.setText(sender);
-		senderLabel.setFont(styles.getHeaderFont());
-		senderLabel.setForeground(styles.getHeaderColor());
+		senderLabel.setFont(styles.getBoldFont());
+		senderLabel.setForeground(isUser ? styles.getLinkColor() : styles.getHeaderColor());
 		senderLabel.setBackground(bgColor);
 
-		// Message content
+		Label timeLabel = new Label(headerRow, SWT.RIGHT);
+		timeLabel.setText(timeFormat.format(new Date()));
+		timeLabel.setFont(styles.getSmallFont());
+		timeLabel.setForeground(styles.getTimestampColor());
+		timeLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		timeLabel.setBackground(bgColor);
+
+		// Message text content
 		StyledText messageText = new StyledText(bubble, SWT.WRAP | SWT.READ_ONLY);
-		// messageText.setText(content);
 		messageText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 		messageText.setBackground(bgColor);
+		messageText.setForeground(fgColor);
 		messageText.setWordWrap(true);
 
-		// Apply markdown styling
 		applyMarkdownStyles(messageText, content);
 
-		// Add copy button if has code
-		if (content.contains("```") || markdownRenderer.hasCodeBlocks(content)) {
-			addCopyButton(bubble, content, bgColor);
+		// Code block actions toolbar (Copy + Insert in Editor)
+		if (content != null && (content.contains("```") || markdownRenderer.hasCodeBlocks(content))) {
+			addCodeActionsToolbar(bubble, content, bgColor);
 		}
 
-		// Refresh layout
 		messagesContainer.layout(true, true);
 		scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 		scrollToBottom();
@@ -567,10 +841,10 @@ public class ChatView extends ViewPart {
 		return messageText;
 	}
 
-	/**
-	 * Apply markdown styles to text widget.
-	 */
 	private void applyMarkdownStyles(StyledText textWidget, String content) {
+		if (textWidget == null || textWidget.isDisposed()) {
+			return;
+		}
 		List<MarkdownRenderer.StyledSegment> segments = markdownRenderer.parse(content);
 
 		StringBuilder visualText = new StringBuilder();
@@ -578,7 +852,7 @@ public class ChatView extends ViewPart {
 
 		for (MarkdownRenderer.StyledSegment seg : segments) {
 			int start = visualText.length();
-			visualText.append(seg.text); // Hier kommt NUR der bereinigte Inhalt rein
+			visualText.append(seg.text);
 
 			StyleRange sr = markdownRenderer.createStyleRange(seg, start);
 			if (sr != null) {
@@ -586,42 +860,100 @@ public class ChatView extends ViewPart {
 			}
 		}
 
-		// Damit Windows nicht eigenmächtig \r\n einbaut, setzen wir den Text
-		// und die Ranges in einem Rutsch.
 		textWidget.setText(visualText.toString());
 		textWidget.setStyleRanges(ranges.toArray(new StyleRange[0]));
 	}
 
 	/**
-	 * Add copy button for code blocks.
+	 * Adds modern action toolbar with Copy and Insert at Cursor buttons.
 	 */
-	private void addCopyButton(Composite parent, String content, Color bgColor) {
-		Button copyBtn = new Button(parent, SWT.PUSH);
+	private void addCodeActionsToolbar(Composite parent, String content, Color bgColor) {
+		Composite toolbar = new Composite(parent, SWT.NONE);
+		GridLayout layout = new GridLayout(2, false);
+		layout.marginWidth = 0;
+		layout.marginHeight = 4;
+		layout.horizontalSpacing = 6;
+		toolbar.setLayout(layout);
+		toolbar.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, true, false));
+		toolbar.setBackground(bgColor);
+
+		// Copy Button
+		Button copyBtn = new Button(toolbar, SWT.PUSH | SWT.FLAT);
 		copyBtn.setText("📋 Copy Code");
-		copyBtn.setBackground(bgColor);
+		copyBtn.setFont(styles.getSmallFont());
+		copyBtn.setBackground(styles.getChipBackground());
+		copyBtn.setForeground(styles.getChipForeground());
 		copyBtn.addListener(SWT.Selection, e -> {
-			// Extract just the code
-			List<MarkdownRenderer.CodeBlock> blocks = markdownRenderer.extractCodeBlocks(content);
-			StringBuilder codeOnly = new StringBuilder();
-			for (MarkdownRenderer.CodeBlock block : blocks) {
-				codeOnly.append(block.code).append("\n");
-			}
-
-			String textToCopy = codeOnly.length() > 0 ? codeOnly.toString() : content;
-			copyToClipboard(textToCopy);
+			String code = extractCodeOnly(content);
+			copyToClipboard(code);
 			copyBtn.setText("✅ Copied!");
-
-			// Reset button text after 2 seconds
 			Display.getDefault().timerExec(2000, () -> {
 				if (!copyBtn.isDisposed()) {
 					copyBtn.setText("📋 Copy Code");
 				}
 			});
 		});
+
+		// Insert at Cursor Button
+		Button insertBtn = new Button(toolbar, SWT.PUSH | SWT.FLAT);
+		insertBtn.setText("📥 Insert in Editor");
+		insertBtn.setFont(styles.getSmallFont());
+		insertBtn.setToolTipText("Insert this code at current cursor in active Java editor");
+		insertBtn.setBackground(styles.getChipBackground());
+		insertBtn.setForeground(styles.getChipForeground());
+		insertBtn.addListener(SWT.Selection, e -> {
+			String code = extractCodeOnly(content);
+			boolean inserted = insertIntoActiveEditor(code);
+			if (inserted) {
+				insertBtn.setText("✅ Inserted!");
+				Display.getDefault().timerExec(2000, () -> {
+					if (!insertBtn.isDisposed()) {
+						insertBtn.setText("📥 Insert in Editor");
+					}
+				});
+			}
+		});
+	}
+
+	private String extractCodeOnly(String content) {
+		List<MarkdownRenderer.CodeBlock> blocks = markdownRenderer.extractCodeBlocks(content);
+		if (blocks.isEmpty()) {
+			return content;
+		}
+		StringBuilder sb = new StringBuilder();
+		for (MarkdownRenderer.CodeBlock b : blocks) {
+			sb.append(b.code).append('\n');
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * Inserts code directly at the cursor position in the active Eclipse Java text
+	 * editor.
+	 */
+	private boolean insertIntoActiveEditor(String text) {
+		try {
+			IEditorPart editor = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage().getActiveEditor();
+			if (editor instanceof ITextEditor textEditor) {
+				IDocumentProvider provider = textEditor.getDocumentProvider();
+				IDocument doc = provider.getDocument(textEditor.getEditorInput());
+				ITextSelection sel = (ITextSelection) textEditor.getSelectionProvider().getSelection();
+				if (doc != null && sel != null) {
+					doc.replace(sel.getOffset(), sel.getLength(), text);
+					return true;
+				}
+			}
+		} catch (BadLocationException ignored) {
+		}
+		return false;
 	}
 
 	private void copyToClipboard(String text) {
-		Clipboard clipboard = new Clipboard(Display.getDefault());
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		Clipboard clipboard = new Clipboard(display);
 		try {
 			TextTransfer textTransfer = TextTransfer.getInstance();
 			clipboard.setContents(new Object[] { text }, new Transfer[] { textTransfer });
@@ -631,8 +963,12 @@ public class ChatView extends ViewPart {
 	}
 
 	private void scrollToBottom() {
-		Display.getDefault().asyncExec(() -> {
-			if (!scrolledComposite.isDisposed()) {
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> {
+			if (scrolledComposite != null && !scrolledComposite.isDisposed()) {
 				scrolledComposite.setOrigin(0, messagesContainer.getSize().y);
 			}
 		});
@@ -642,14 +978,14 @@ public class ChatView extends ViewPart {
 		isStreaming = true;
 		sendButton.setEnabled(false);
 		stopButton.setEnabled(true);
-		statusLabel.setText("🦙 Thinking...");
+		updateStatus("🦙", "Thinking...");
 	}
 
 	private void stopStreaming() {
 		isStreaming = false;
 		sendButton.setEnabled(true);
 		stopButton.setEnabled(false);
-		statusLabel.setText("Stopped");
+		updateStatus("⏹️", "Stopped");
 	}
 
 	private void onChunk(String chunk) {
@@ -658,8 +994,15 @@ public class ChatView extends ViewPart {
 		}
 
 		currentResponse.append(chunk);
-		Display.getDefault().asyncExec(() -> {
-			if (!currentAssistantBubble.isDisposed()) {
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> {
+			if (!isStreaming) {
+				return;
+			}
+			if (currentAssistantBubble != null && !currentAssistantBubble.isDisposed()) {
 				currentAssistantBubble.append(chunk);
 				messagesContainer.layout(true, true);
 				scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
@@ -669,55 +1012,74 @@ public class ChatView extends ViewPart {
 	}
 
 	private void onComplete(String fullResponse) {
+		if (!isStreaming) {
+			return;
+		}
 		isStreaming = false;
-		conversation.add(ChatMessage.assistant(currentResponse.toString()));
+
+		String responseText = (fullResponse != null && !fullResponse.isEmpty()) ? fullResponse
+				: currentResponse.toString();
+		conversation.add(ChatMessage.assistant(responseText));
 		historyStore.save(conversation);
 
-		Display.getDefault().asyncExec(() -> {
-			sendButton.setEnabled(true);
-			stopButton.setEnabled(false);
-			statusLabel.setText("Ready");
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> {
+			if (sendButton != null && !sendButton.isDisposed()) {
+				sendButton.setEnabled(true);
+			}
+			if (stopButton != null && !stopButton.isDisposed()) {
+				stopButton.setEnabled(false);
+			}
+			updateStatus("🟢", "Ready");
 
-			// Apply final styling and add copy button if needed
 			if (currentAssistantBubble != null && !currentAssistantBubble.isDisposed()) {
-				applyMarkdownStyles(currentAssistantBubble, currentResponse.toString());
+				applyMarkdownStyles(currentAssistantBubble, responseText);
 
-				// Add copy button if has code
-				if (markdownRenderer.hasCodeBlocks(currentResponse.toString())) {
+				if (markdownRenderer.hasCodeBlocks(responseText)) {
 					Composite parent = currentAssistantBubble.getParent();
-					addCopyButton(parent, currentResponse.toString(), styles.getAssistantBubbleBackground());
+					addCodeActionsToolbar(parent, responseText, styles.getAssistantBubbleBackground());
 					parent.layout(true, true);
 				}
 			}
 
-			// Show diff dialog for fix actions
 			if ("fix".equals(lastAction) && lastContext != null && !lastContext.isEmpty()) {
-				// Show the diff between original and fixed code
-				CodeDiffDialog.show("Code Fix Suggestion", lastContext, currentResponse.toString());
+				CodeDiffDialog.show("Code Fix Suggestion", lastContext, responseText);
 			}
 
-			messagesContainer.layout(true, true);
-			scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+			if (messagesContainer != null && !messagesContainer.isDisposed()) {
+				messagesContainer.layout(true, true);
+				scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+			}
 		});
 	}
 
 	private void onError(String error) {
 		isStreaming = false;
 
-		Display.getDefault().asyncExec(() -> {
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> {
 			if (currentAssistantBubble != null && !currentAssistantBubble.isDisposed()) {
 				currentAssistantBubble.append("\n❌ Error: " + error);
 				currentAssistantBubble.setForeground(styles.getErrorColor());
 			}
-			sendButton.setEnabled(true);
-			stopButton.setEnabled(false);
-			statusLabel.setText("Error occurred");
+			if (sendButton != null && !sendButton.isDisposed()) {
+				sendButton.setEnabled(true);
+			}
+			if (stopButton != null && !stopButton.isDisposed()) {
+				stopButton.setEnabled(false);
+			}
+			updateStatus("🔴", "Error occurred: " + error);
 		});
 	}
 
 	private void clearConversation() {
-		// Remove all message bubbles
-		for (org.eclipse.swt.widgets.Control child : messagesContainer.getChildren()) {
+		for (Control child : messagesContainer.getChildren()) {
 			child.dispose();
 		}
 
@@ -728,64 +1090,53 @@ public class ChatView extends ViewPart {
 
 		messagesContainer.layout(true, true);
 		scrolledComposite.setMinSize(messagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
-		statusLabel.setText("Conversation cleared");
+		updateStatus("🟢", "Conversation cleared");
 	}
 
 	@Override
 	public void setFocus() {
-		inputField.setFocus();
+		if (inputField != null && !inputField.isDisposed()) {
+			inputField.setFocus();
+		}
 	}
 
 	@Override
 	public void dispose() {
-		// Note: ChatStyles is a singleton, don't dispose here
+		isStreaming = false;
 		super.dispose();
 	}
 
-	/**
-	 * Add context (selected code) to the next message. Now includes structural
-	 * context via CodeContextCollector.
-	 */
 	public void setContext(String context, String action) {
-		// Store last action and context for diff and context-aware prompts
 		this.lastAction = action;
 		this.lastContext = context;
 
-		// Build context-aware prompt
 		String contextPrompt = buildContextAwarePrompt(context, action);
 		inputField.setText(contextPrompt);
 		inputField.setFocus();
 
-		// Auto-send after a small delay to ensure UI is ready
-		Display.getDefault().asyncExec(() -> {
-			if (!inputField.isDisposed()) {
-				sendMessage();
-			}
-		});
+		Display display = Display.getDefault();
+		if (display != null && !display.isDisposed()) {
+			display.asyncExec(() -> {
+				if (!inputField.isDisposed()) {
+					sendMessage();
+				}
+			});
+		}
 	}
 
-	/**
-	 * Builds a context-aware prompt using the CodeContextCollector.
-	 *
-	 * @param selectedCode the code selected by the user
-	 * @param action       the action (explain, fix, etc.)
-	 * @return the prompt to send to the LLM
-	 */
 	private String buildContextAwarePrompt(String selectedCode, String action) {
 		if (selectedCode == null || selectedCode.isBlank()) {
-			return selectedCode;
+			return selectedCode == null ? "" : selectedCode;
 		}
 
-		// Extract structural context
 		CodeContextCollector.Context ctx = CodeContextCollector.collect(selectedCode);
 		StringBuilder prompt = new StringBuilder();
 
 		String prefix = ctx.toPromptPrefix();
 		if (!prefix.isBlank()) {
-			prompt.append(prefix).append("\n---\n");
+			prompt.append(prefix);
 		}
 
-		// Action-specific instruction
 		String instruction = switch (action) {
 		case "explain" -> "Explain this code:";
 		case "fix" -> "Find and fix any issues in this code:";
@@ -794,11 +1145,10 @@ public class ChatView extends ViewPart {
 		case "refactor" -> "Refactor this code for clarity and maintainability:";
 		case "review" -> "Review this code and list issues, risks, and suggestions:";
 		case "convert" -> "Convert this code to a different language/format:";
-		default -> selectedCode; // fallback
+		default -> selectedCode;
 		};
 
 		prompt.append(instruction).append("\n```\n").append(selectedCode).append("\n```");
-
 		return prompt.toString();
 	}
 }

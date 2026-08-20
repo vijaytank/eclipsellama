@@ -77,7 +77,7 @@ public class McpTests {
 
 	@Test
 	public void testMcpMessageSubclassCreation() {
-		McpMessage msg = new TestMcpMessage("test-id", "test-method", "test-params");
+		McpMessage msg = new StubMcpMessage("test-id", "test-method", "test-params");
 		assertEquals("test-id", msg.getId());
 		assertEquals("test-method", msg.getMethod());
 		assertEquals("test-params", msg.getParams());
@@ -85,20 +85,54 @@ public class McpTests {
 
 	@Test
 	public void testMcpMessageNullParams() {
-		McpMessage msg = new TestMcpMessage("id1", "method1", null);
+		McpMessage msg = new StubMcpMessage("id1", "method1", null);
 		assertEquals(null, msg.getParams());
 	}
 
 	@Test
-	public void testMcpProviderNameFormat() {
-		// Structural: provider name format is covered by McpProviderTest with a stubbed
-		// connection; here we only assert the provider can be constructed structurally.
-		assertTrue(true);
+	public void testMcpServerConfigName() {
+		McpServerConfig config = new McpServerConfig();
+		config.setName("nakshastramcp");
+		assertEquals("nakshastramcp", config.getName());
 	}
 
-	// Test implementation of McpMessage for testing
-	private static class TestMcpMessage extends McpMessage {
-		protected TestMcpMessage(String id, String method, Object params) {
+	@Test
+	public void testMcpServerConfigTools() {
+		McpServerConfig config = new McpServerConfig();
+		config.setTools(java.util.List.of("ping", "search_codebase", "read_file"));
+		assertEquals(3, config.getTools().size());
+		assertTrue(config.getTools().contains("search_codebase"));
+	}
+
+	@Test
+	public void testMcpProviderNameFormat() {
+		McpServerConfig config = new McpServerConfig();
+		config.setName("my-custom-mcp");
+		McpProvider provider = new McpProvider(config, new McpConnectionManager());
+		assertEquals("my-custom-mcp", provider.getProviderName());
+	}
+
+	@Test
+	public void testMcpServerStoreSaveAndLoad() {
+		java.util.List<McpServerConfig> list = new java.util.ArrayList<>();
+		McpServerConfig c1 = new McpServerConfig();
+		c1.setName("nakshastramcp");
+		c1.setTransport("http-streamable");
+		c1.setEndpoint("http://127.0.0.1:2102/mcp");
+		c1.setTools(java.util.List.of("ping", "search_codebase", "read_file"));
+		list.add(c1);
+
+		com.eclipsellama.plugin.preferences.McpServerStore.save(list);
+		java.util.List<McpServerConfig> loaded = com.eclipsellama.plugin.preferences.McpServerStore.load();
+		assertTrue(loaded.size() >= 1);
+		boolean found = loaded.stream()
+				.anyMatch(s -> "nakshastramcp".equals(s.getName()) && s.getTools().contains("search_codebase"));
+		assertTrue(found);
+	}
+
+	// Stub implementation of McpMessage for testing
+	private static class StubMcpMessage extends McpMessage {
+		protected StubMcpMessage(String id, String method, Object params) {
 			super(id, method, params);
 		}
 	}

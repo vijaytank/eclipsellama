@@ -44,6 +44,7 @@ import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 import com.eclipsellama.plugin.search.SearchResult;
 import com.eclipsellama.plugin.search.WebSearchRouter;
 import com.eclipsellama.plugin.search.WebSearchService;
+import com.eclipsellama.plugin.security.PromptSanitizer;
 import com.eclipsellama.plugin.storage.ChatHistoryStore;
 import com.eclipsellama.plugin.ui.CodeDiffDialog;
 
@@ -459,8 +460,10 @@ public class ChatView extends ViewPart {
 	}
 
 	private void sendMessage() {
-		String input = inputField.getText().trim();
-		if (input.isEmpty()) {
+		String rawInput = inputField.getText();
+		// Phase 5 security: sanitize all user input before it reaches the runtime
+		String input = PromptSanitizer.sanitizeUserInput(rawInput);
+		if (input == null || input.isEmpty()) {
 			return;
 		}
 

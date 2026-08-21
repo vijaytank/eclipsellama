@@ -3,7 +3,7 @@
    <description name="EclipseLlama Update Site" url="https://vijaytank.github.io/eclipsellama/">
       EclipseLlama - Privacy-first AI coding assistant powered by Ollama
    </description>
-   <feature url="features/com.eclipsellama.feature_2.0.1.jar" id="com.eclipsellama.feature" version="2.0.1">
+   <feature url="features/com.eclipsellama.feature_2.1.0.jar" id="com.eclipsellama.feature" version="2.1.0">
       <category name="AI Tools"/>
    </feature>
    <category-def name="AI Tools" label="AI Development Tools">

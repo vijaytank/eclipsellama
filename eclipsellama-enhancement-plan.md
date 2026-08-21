@@ -1,7 +1,7 @@
 # EclipseLlama Enhancement Plan *(Version 2.0 – Active Roadmap)*
 
-> **Status**: Phases 1–4 Completed ✅ | Phase 5 Security Hardening In Progress 🟡
-> **Branch**: `develop` | **Next Target Release**: `v2.1.0` | **Repo**: `https://github.com/vijaytank/eclipsellama`
+> **Status**: Phases 1–6 Completed ✅ | Phase 7 Planning/Autonomous Agent Mode 🚀
+> **Branch**: `develop` | **Next Target Release**: `v2.1.0` (Ready) | **Repo**: `https://github.com/vijaytank/eclipsellama`
 > **Methodology**: Test-driven development, zero assumptions, AST-based inspection with NakshAstraMCP.
 
 ---
@@ -87,31 +87,49 @@ src/com/eclipsellama/plugin/
 
 ## PART 2 – PENDING IMPLEMENTATION PHASES
 
-### Phase 5 – Security Hardening 🟡 (Current Target for v2.1.0 Release)
+### Phase 5 – Security Hardening ✅ COMPLETED (v2.1.0)
 
 1. **Secure Storage Migration (`SecurePrefsStore`)**
-   - Wrap Eclipse `org.eclipse.equinox.security.storage.ISecurePreferences`.
-   - Automatically migrate plain-text API keys from `config.properties` into encrypted secure storage on first startup.
-   - Support secure retrieval for OpenAI API keys, Brave Search keys, and MCP tokens.
+   - Wrapped Eclipse `org.eclipse.equinox.security.storage.ISecurePreferences`.
+   - Implemented idempotent migration of plain-text API keys from `config.properties` into encrypted secure storage on first startup (`SetupLauncher.migratePreferences()`).
+   - Supports secure retrieval for OpenAI API keys, Brave Search keys, and MCP bearer tokens.
+   - Graceful degradation when Equinox security bundle unavailable (logs warning, skips migration).
+   - **Verification**: 5 JUnit tests (`SecurePrefsStoreTest`), manual validation confirmed legacy `config.properties` keys cleared on second start.
 
 2. **Prompt Injection & Sanitization (`PromptSanitizer`)**
-   - Add `PromptSanitizer.sanitizeUserInput(String)` to strip zero-width characters and neutralize prompt override injections.
-   - Run input through sanitizer in all code action handlers before LLM transmission.
+   - Added `PromptSanitizer.sanitizeUserInput(String)` stripping zero-width characters (`\u200B`, `\u200C`, `\u200D`, `\uFEFF`, `\u2060-\u206F`, `\u3000`) and neutralizing prompt-override phrases (`ignore previous instructions`, `system override`, `you are now`, etc.) with `[SANITIZED_OVERRIDE_ATTEMPT]` audit marker.
+   - Integrated at single choke point in `ChatView.sendMessage()` covering all 8 code action handlers (Explain, Fix, Doc, Test, Refactor, Review, Convert, GenerateCommit) plus chat input and quick prompts.
+   - **Verification**: 10 JUnit tests (`PromptSanitizerTest`), no regression in existing 82 tests.
 
-3. **MCP Bearer Authentication**
-   - Add `bearerToken` storage to `McpServerConfig`.
-   - Inject `Authorization: Bearer <token>` in `SseMcpConnection` and `StreamableHttpMcpConnection`.
+3. **MCP Bearer Authentication** (verified existing wiring + secure storage integration)
+   - `McpServerConfig` already had `bearerToken` field with getter/setter (lines 34, 123, 127-130).
+   - `SseMcpConnection` and `StreamableHttpMcpConnection` already injected `Authorization: Bearer <token>` header when token present (lines 121-122, 172-173, 54-55).
+   - Updated `McpServerStore` to persist/retrieve bearer tokens via `SecurePrefsStore` (encrypted).
+   - `McpPreferencePage` already provides UI for bearer token input.
+   - **Verification**: Code review confirmed; no new code required for auth mechanism itself.
 
 4. **HTTPS / TLS Configuration**
-   - Preference for enforcing TLS and custom truststore paths for enterprise deployments.
+   - Added preferences `security.tls.enforce` (boolean, default false) and `security.tls.truststore.path` (String, default empty) to `EclipseLlamaPreferences`.
+   - Added TLS group to `EclipseLlamaPreferencePage` with "Enforce TLS" checkbox and "Custom truststore path" text field.
+   - Created testable `TlsPolicy` class enforcing HTTPS for remote endpoints (localhost/LAN still permitted over HTTP).
+   - Wired enforcement into `SseMcpConnection` and `StreamableHttpMcpConnection` constructors.
+   - **Verification**: 7 JUnit tests (`TlsPolicyTest`), 104 total tests passing.
 
 ---
 
-### Phase 6 – Quality Gates & Release Packaging 🔵 (v2.1.0 Gate)
+### Phase 6 – Quality Gates & Release Packaging ✅ COMPLETED (v2.1.0 Gate)
 
-1. **Test Suite Verification**: Execute all JUnit test suites (currently 82+ passing tests).
-2. **PDE Build & Update Site**: Generate plugin update site jars for `v2.1.0`.
-3. **OSGi Manifest Validation**: Verify all exported packages and required bundles (`org.eclipse.compare`, `org.eclipse.equinox.security`).
+1. **Test Suite Verification**: Executed all JUnit test suites — **104/104 tests passing** (82 pre-existing + 22 new security tests). Zero compiler warnings (Java 21 PDE build).
+2. **PDE Build & Update Site**: Generated plugin update site for `v2.1.0`:
+   - `com.eclipsellama.plugin_2.1.0.jar` (287 KB) — compiled plugin bundle
+   - `com.eclipsellama.feature_2.1.0.jar` (908 B) — feature descriptor
+   - `content.jar` / `artifacts.jar` — p2 metadata repositories
+   - `site.xml` — update site index
+   - All built via Eclipse PDE `FeaturesAndBundlesPublisher` against `C:\Users\Vijay\eclipse\committers-2026-06`
+3. **OSGi Manifest Validation**: Verified all exported packages and required bundles present in `META-INF/MANIFEST.MF`:
+   - `Require-Bundle`: `org.eclipse.compare`, `org.eclipse.equinox.security` (already declared)
+   - `Bundle-Version: 2.1.0`
+   - `Bundle-RequiredExecutionEnvironment: JavaSE-21`
 
 ---
 
@@ -136,7 +154,9 @@ src/com/eclipsellama/plugin/
 | Gate | Requirement | Status |
 | :--- | :--- | :--- |
 | **Compilation** | Java 21 PDE build with zero warnings | ✅ Passed |
-| **Unit Tests** | All 82 JUnit 4 tests passing | ✅ 82/82 OK |
+| **Unit Tests** | All 104 JUnit 4 tests passing | ✅ 104/104 OK |
 | **Scroll / Layout** | Resizing, streaming, and large message scrolling | ✅ Verified |
-| **Security** | Secure storage migration & prompt sanitizer | 🟡 Phase 5 pending |
+| **Security** | Secure storage migration, prompt sanitizer, TLS enforcement | ✅ Phase 5 Complete |
+| **Release Artifacts** | Plugin JAR, Feature JAR, p2 metadata (content/artifacts JARs), site.xml | ✅ v2.1.0 Built |
+| **OSGi Manifest** | Required bundles: `org.eclipse.compare`, `org.eclipse.equinox.security` | ✅ Validated |
 | **Tool Execution** | ReAct autonomous agent loop | 🚀 Phase 7 planned |

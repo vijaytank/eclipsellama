@@ -8,6 +8,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
+import com.eclipsellama.plugin.security.TlsPolicy;
+
 /**
  * MCP {@link McpConnection} for the SSE transport.
  * <p>
@@ -44,6 +47,18 @@ public class SseMcpConnection implements McpConnection, AutoCloseable {
 	public SseMcpConnection(URL serverUrl, String bearerToken) {
 		this.serverUrl = java.util.Objects.requireNonNull(serverUrl, "Server URL cannot be null");
 		this.bearerToken = (bearerToken != null && !bearerToken.isBlank()) ? bearerToken.trim() : null;
+		enforceTlsIfEnabled();
+	}
+
+	/**
+	 * Rejects the configured endpoint when the TLS-enforcement preference is on and
+	 * the endpoint is a non-local plain-HTTP URL.
+	 */
+	private void enforceTlsIfEnabled() {
+		if (EclipseLlamaPreferences.getTlsEnforce() && !TlsPolicy.isPermitted(serverUrl, true)) {
+			throw new IllegalArgumentException("TLS enforcement is enabled and endpoint is not remote-safe ("
+					+ serverUrl.toExternalForm() + "). Use an https:// URL or add a localhost exception.");
+		}
 	}
 
 	/**

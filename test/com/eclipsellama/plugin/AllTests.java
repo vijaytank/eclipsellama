@@ -19,6 +19,9 @@ import com.eclipsellama.plugin.search.SearchPromptBuilderTest;
 import com.eclipsellama.plugin.search.SearchProviderRegistryTest;
 import com.eclipsellama.plugin.search.WebSearchRouterTest;
 import com.eclipsellama.plugin.search.WebSearchServiceTest;
+import com.eclipsellama.plugin.security.PromptSanitizerTest;
+import com.eclipsellama.plugin.security.SecurePrefsStoreTest;
+import com.eclipsellama.plugin.security.TlsPolicyTest;
 import com.eclipsellama.plugin.storage.ChatHistoryStoreTest;
 import com.eclipsellama.plugin.ui.CodeDiffDialogTest;
 
@@ -47,7 +50,10 @@ import com.eclipsellama.plugin.ui.CodeDiffDialogTest;
 
 		// Phase 4 – Features
 		CodeContextCollectorTest.class, ModelRouterTest.class, ChatHistoryStoreTest.class, CodeDiffDialogTest.class,
-		com.eclipsellama.plugin.setup.SetupLauncherTest.class, })
+		com.eclipsellama.plugin.setup.SetupLauncherTest.class,
+
+		// Phase 5 – Security
+		PromptSanitizerTest.class, SecurePrefsStoreTest.class, TlsPolicyTest.class, })
 public class AllTests {
 	// This class intentionally left empty.
 	// The @RunWith and @SuiteClasses annotations define the test suite.

@@ -9,6 +9,7 @@ import com.eclipsellama.plugin.mcp.McpProvider;
 import com.eclipsellama.plugin.mcp.McpServerConfig;
 import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
 import com.eclipsellama.plugin.preferences.McpServerStore;
+import com.eclipsellama.plugin.security.SecurePrefsStore;
 
 /**
  * Startup Launcher plugin component. This class handles initial plugin setup,
@@ -61,13 +62,48 @@ public class SetupLauncher implements IStartup {
 	}
 
 	/**
-	 * Migrates legacy plain-text keys from {@code config.properties} to the
-	 * SecurePrefsStore. This process must be idempotent and handle missing keys
-	 * gracefully.
+	 * Migrates legacy plain-text keys from config.properties and in-memory MCP
+	 * configs into the SecurePrefsStore. This process is idempotent: re-running it
+	 * must not duplicate keys or touch already-migrated secrets. Missing keys are
+	 * handled gracefully (no-op).
 	 */
 	private void migratePreferences() {
-		System.out.println("Running legacy preference migration from config.properties...");
-		System.out.println("Legacy preference migration simulation completed.");
+		if (!SecurePrefsStore.isAvailable()) {
+			System.out.println("SecurePrefsStore unavailable; skipping secret migration.");
+			return;
+		}
+
+		int migrated = 0;
+
+		// 1. OpenAI API key
+		String openAiKey = EclipseLlamaPreferences.getApiKey();
+		if (openAiKey != null && !openAiKey.isBlank() && SecurePrefsStore.secureGet("api/openai", "apiKey").isEmpty()) {
+			SecurePrefsStore.securePutEncrypted("api/openai", "apiKey", openAiKey.trim());
+			EclipseLlamaPreferences.setApiKey(""); // clear plaintext legacy
+			migrated++;
+		}
+
+		// 2. Brave Search API key
+		String searchKey = EclipseLlamaPreferences.getSearchApiKey();
+		if (searchKey != null && !searchKey.isBlank()
+				&& SecurePrefsStore.secureGet("search/brave", "apiKey").isEmpty()) {
+			SecurePrefsStore.securePutEncrypted("search/brave", "apiKey", searchKey.trim());
+			EclipseLlamaPreferences.setSearchApiKey(""); // clear plaintext legacy
+			migrated++;
+		}
+
+		// 3. MCP bearer tokens
+		for (McpServerConfig config : McpServerStore.load()) {
+			String token = config.getBearerToken();
+			String node = "mcp/" + config.getName();
+			if (token != null && !token.isBlank() && SecurePrefsStore.secureGet(node, "bearerToken").isEmpty()) {
+				SecurePrefsStore.securePutEncrypted(node, "bearerToken", token.trim());
+				config.setBearerToken(null); // clear plaintext legacy in-memory
+				migrated++;
+			}
+		}
+
+		System.out.println("Legacy preference migration complete. Migrated " + migrated + " secret(s).");
 	}
 
 	public static void main(String[] args) {

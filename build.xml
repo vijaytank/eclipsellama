@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="eclipsellama-build" default="build" basedir=".">
+    <property name="eclipse.home" value="${eclipse.home}"/>
+    <property name="project.dir" value="${basedir}"/>
+    <property name="build.dir" value="${basedir}/build"/>
+    <property name="updatesite.dir" value="${basedir}/docs/updatesite"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${updatesite.dir}/features"/>
+        <mkdir dir="${updatesite.dir}/plugins"/>
+    </target>
+    
+    <target name="build-plugin" depends="init">
+        <echo message="Building plugin JAR..."/>
+        <jar destfile="${updatesite.dir}/plugins/com.eclipsellama.plugin_2.1.0.jar" 
+             basedir="${basedir}/bin" 
+             manifest="${basedir}/META-INF/MANIFEST.MF">
+            <fileset dir="${basedir}/icons"/>
+            <fileset dir="${basedir}/lib" includes="json-20240303.jar"/>
+        </jar>
+        <echo message="Plugin JAR created: ${updatesite.dir}/plugins/com.eclipsellama.plugin_2.1.0.jar"/>
+    </target>
+    
+    <target name="build-feature" depends="init">
+        <echo message="Building feature JAR..."/>
+        <unzip src="${updatesite.dir}/features/com.eclipsellama.feature_2.0.1.jar" 
+               dest="${build.dir}/feature" overwrite="true"/>
+        <replace file="${build.dir}/feature/feature.xml" token="2.0.1" value="2.1.0"/>
+        <jar destfile="${updatesite.dir}/features/com.eclipsellama.feature_2.1.0.jar" 
+             basedir="${build.dir}/feature"/>
+        <echo message="Feature JAR created: ${updatesite.dir}/features/com.eclipsellama.feature_2.1.0.jar"/>
+    </target>
+    
+    <target name="p2-metadata" depends="init">
+        <echo message="Generating p2 metadata using Eclipse PDE..."/>
+        <condition property="eclipse.exe" value="${eclipse.home}/eclipse.exe">
+            <available file="${eclipse.home}/eclipse.exe"/>
+        </condition>
+        <condition property="eclipse.exe" value="${eclipse.home}/eclipse">
+            <available file="${eclipse.home}/eclipse"/>
+        </condition>
+        <fail message="Eclipse installation not found at ${eclipse.home}. Set eclipse.home property.">
+            <not>
+                <isset property="eclipse.exe"/>
+            </not>
+        </fail>
+        
+        <exec executable="${eclipse.exe}" failonerror="true">
+            <arg value="-nosplash"/>
+            <arg value="-application"/>
+            <arg value="org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher"/>
+            <arg value="-metadataRepository"/>
+            <arg value="file:///${updatesite.dir}"/>
+            <arg value="-artifactRepository"/>
+            <arg value="file:///${updatesite.dir}"/>
+            <arg value="-source"/>
+            <arg value="${updatesite.dir}"/>
+            <arg value="-compress"/>
+            <arg value="-publishArtifacts"/>
+        </exec>
+        <echo message="p2 metadata generated successfully"/>
+    </target>
+    
+    <target name="site-xml" depends="init">
+        <echo message="Updating site.xml..."/>
+        <copy file="${updatesite.dir}/site.xml" tofile="${updatesite.dir}/site.xml.bak" overwrite="true"/>
+        <replace file="${updatesite.dir}/site.xml" 
+                 token='features/com.eclipsellama.feature_2.0.1.jar' 
+                 value='features/com.eclipsellama.feature_2.1.0.jar'/>
+        <replace file="${updatesite.dir}/site.xml" 
+                 token='version="2.0.1"' 
+                 value='version="2.1.0"'/>
+        <echo message="site.xml updated to v2.1.0"/>
+    </target>
+    
+    <target name="build" depends="build-plugin, build-feature, site-xml, p2-metadata">
+        <echo message="Build complete! Update site ready at ${updatesite.dir}"/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+</project>

@@ -9,6 +9,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import com.eclipsellama.plugin.preferences.EclipseLlamaPreferences;
+import com.eclipsellama.plugin.security.TlsPolicy;
+
 /**
  * MCP {@link McpConnection} for the modern "Streamable HTTP" transport.
  * <p>
@@ -38,6 +41,7 @@ public class StreamableHttpMcpConnection implements McpConnection, AutoCloseable
 	public StreamableHttpMcpConnection(URL endpoint, String bearerToken) {
 		this.endpoint = java.util.Objects.requireNonNull(endpoint, "Endpoint cannot be null");
 		this.bearerToken = bearerToken;
+		enforceTlsIfEnabled();
 	}
 
 	/**
@@ -136,6 +140,19 @@ public class StreamableHttpMcpConnection implements McpConnection, AutoCloseable
 	public void close() throws IOException {
 		// Nothing to release beyond the per-request connections, which are closed in
 		// writeMessage. Kept for AutoCloseable symmetry.
+	}
+
+	/**
+	 * Rejects the configured endpoint when the TLS-enforcement preference is on and
+	 * the endpoint is a non-local plain-HTTP URL. Throws
+	 * {@link IllegalArgumentException} so the failure is loud and immediate at
+	 * construction time.
+	 */
+	private void enforceTlsIfEnabled() {
+		if (EclipseLlamaPreferences.getTlsEnforce() && !TlsPolicy.isPermitted(endpoint, true)) {
+			throw new IllegalArgumentException("TLS enforcement is enabled and endpoint is not remote-safe ("
+					+ endpoint.toExternalForm() + "). Use an https:// URL or add a localhost exception.");
+		}
 	}
 
 	/**

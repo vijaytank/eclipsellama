@@ -3,7 +3,7 @@ Bundle-ManifestVersion: 2
 Automatic-Module-Name: com.eclipsellama.plugin
 Bundle-Name: EclipseLlama
 Bundle-SymbolicName: com.eclipsellama.plugin;singleton:=true
-Bundle-Version: 2.0.1
+Bundle-Version: 2.1.0
 Bundle-Vendor: EclipseLlama
 Bundle-Activator: com.eclipsellama.plugin.EclipseLlamaActivator
 Bundle-ClassPath: .,

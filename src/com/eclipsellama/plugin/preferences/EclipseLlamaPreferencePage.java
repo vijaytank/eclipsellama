@@ -39,6 +39,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 	private Text searchApiKeyText;
 	private Text searchSearxngEndpointText;
 	private Button searchFallbackButton;
+	private Button tlsEnforceButton;
+	private Text tlsTruststorePathText;
 
 	@Override
 	public void init(IWorkbench workbench) {
@@ -54,6 +56,7 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 
 		createConnectionGroup(container);
 		createRetryGroup(container);
+		createTlsGroup(container);
 		createModelGroup(container);
 		createSearchGroup(container);
 		createPromptsGroup(container);
@@ -104,6 +107,23 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		new Label(group, SWT.NONE).setText("Retry attempts (1-5):");
 		retryText = new Text(group, SWT.BORDER);
 		retryText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+	}
+
+	private void createTlsGroup(Composite parent) {
+		Group group = new Group(parent, SWT.NONE);
+		group.setText("HTTPS / TLS (Enterprise)");
+		group.setLayout(new GridLayout(2, false));
+		group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+
+		new Label(group, SWT.NONE).setText("Enforce TLS:");
+		tlsEnforceButton = new Button(group, SWT.CHECK);
+		tlsEnforceButton.setText("Reject non-HTTPS remote endpoints (localhost/LAN still allowed)");
+		tlsEnforceButton.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+		new Label(group, SWT.NONE).setText("Custom truststore path:");
+		tlsTruststorePathText = new Text(group, SWT.BORDER);
+		tlsTruststorePathText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		tlsTruststorePathText.setMessage("Path to JKS/PKCS12 truststore (optional)");
 	}
 
 	private void createModelGroup(Composite parent) {
@@ -189,6 +209,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		searchApiKeyText.setText(EclipseLlamaPreferences.getSearchApiKey());
 		searchSearxngEndpointText.setText(EclipseLlamaPreferences.getSearchSearxngEndpoint());
 		searchFallbackButton.setSelection(EclipseLlamaPreferences.getSearchFallbackToBuiltin());
+		tlsEnforceButton.setSelection(EclipseLlamaPreferences.getTlsEnforce());
+		tlsTruststorePathText.setText(EclipseLlamaPreferences.getTlsTruststorePath());
 		commitPromptText.setText(EclipseLlamaPreferences.getCommitPrompt());
 
 		// Load recommended models
@@ -273,6 +295,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		EclipseLlamaPreferences.setSearchApiKey(searchApiKeyText.getText());
 		EclipseLlamaPreferences.setSearchSearxngEndpoint(searchSearxngEndpointText.getText());
 		EclipseLlamaPreferences.setSearchFallbackToBuiltin(searchFallbackButton.getSelection());
+		EclipseLlamaPreferences.setTlsEnforce(tlsEnforceButton.getSelection());
+		EclipseLlamaPreferences.setTlsTruststorePath(tlsTruststorePathText.getText());
 		EclipseLlamaPreferences.save();
 	}
 
@@ -310,6 +334,8 @@ public class EclipseLlamaPreferencePage extends PreferencePage implements IWorkb
 		searchApiKeyText.setText("");
 		searchSearxngEndpointText.setText("");
 		searchFallbackButton.setSelection(true);
+		tlsEnforceButton.setSelection(false);
+		tlsTruststorePathText.setText("");
 		commitPromptText.setText("Generate a concise Conventional Commit message for the following Git diff. "
 				+ "Format: type(scope): description\n\n[optional body]");
 		super.performDefaults();

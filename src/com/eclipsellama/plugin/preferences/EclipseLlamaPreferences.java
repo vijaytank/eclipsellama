@@ -31,6 +31,8 @@ public final class EclipseLlamaPreferences {
 	private static final String KEY_SEARCH_SEARXNG_ENDPOINT = "search.searxngEndpoint";
 	private static final String KEY_SEARCH_FALLBACK = "search.fallbackToBuiltin";
 	private static final String KEY_SEARCH_MODE = "search.mode";
+	private static final String KEY_TLS_ENFORCE = "security.tls.enforce";
+	private static final String KEY_TLS_TRUSTSTORE_PATH = "security.tls.truststore.path";
 
 	// Defaults
 	private static final String DEFAULT_ENDPOINT = "http://localhost:11434";
@@ -98,6 +100,8 @@ public final class EclipseLlamaPreferences {
 		properties.setProperty(KEY_SEARCH_SEARXNG_ENDPOINT, DEFAULT_SEARXNG_ENDPOINT);
 		properties.setProperty(KEY_SEARCH_FALLBACK, String.valueOf(DEFAULT_SEARCH_FALLBACK_TO_BUILTIN));
 		properties.setProperty(KEY_SEARCH_MODE, DEFAULT_SEARCH_MODE);
+		properties.setProperty(KEY_TLS_ENFORCE, "false");
+		properties.setProperty(KEY_TLS_TRUSTSTORE_PATH, "");
 
 		// Load from file if exists
 		Path configFile = getConfigFile();
@@ -387,5 +391,40 @@ public final class EclipseLlamaPreferences {
 	 */
 	public static BackendType getBackendType() {
 		return (getEndpoint() != null && getEndpoint().contains("v1")) ? BackendType.OPENAI : BackendType.OLLAMA;
+	}
+
+	/**
+	 * Whether TLS is enforced for outbound MCP/provider connections (default
+	 * {@code false}). When true, plain-HTTP remote endpoints are rejected.
+	 */
+	public static boolean getTlsEnforce() {
+		load();
+		return Boolean.parseBoolean(properties.getProperty(KEY_TLS_ENFORCE, "false"));
+	}
+
+	/**
+	 * Set whether TLS is enforced for remote connections.
+	 */
+	public static void setTlsEnforce(boolean enforce) {
+		load();
+		properties.setProperty(KEY_TLS_ENFORCE, String.valueOf(enforce));
+	}
+
+	/**
+	 * Path to a custom truststore (JKS/PKCS12) used when the OS default trust
+	 * anchors are not sufficient for the enterprise deployment. Empty means the JVM
+	 * default truststore is used.
+	 */
+	public static String getTlsTruststorePath() {
+		load();
+		return properties.getProperty(KEY_TLS_TRUSTSTORE_PATH, "");
+	}
+
+	/**
+	 * Set the custom truststore path.
+	 */
+	public static void setTlsTruststorePath(String path) {
+		load();
+		properties.setProperty(KEY_TLS_TRUSTSTORE_PATH, (path == null || path.isBlank()) ? "" : path.trim());
 	}
 }
